@@ -81,13 +81,12 @@ a { color: var(--accent); }
 .empty { color: var(--faint); text-align: center; margin-top: 30vh; font: 400 15px var(--serif); }
 
 .turn { margin-bottom: 34px; }
-.turn-index { font: 400 10px/1 var(--mono); color: var(--faint); margin-bottom: 8px; letter-spacing: .1em; }
 
 /* who and when */
 .role { font: 400 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .16em; margin: 14px 0 10px; display: flex; gap: 11px; color: var(--faint); }
 .role .who { color: var(--ink2); }
-/* the first label in a turn sits right under the turn number */
-.turn-index + .role { margin-top: 0; }
+/* the first label in a turn carries no extra top margin */
+.turn > .role:first-child, .turn > span:first-child > .role { margin-top: 0; }
 
 /* user turns read as inset notes; Claude's replies flow as the document */
 .user { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; white-space: pre-wrap; margin: 0 0 6px; font-size: var(--prose-size); }

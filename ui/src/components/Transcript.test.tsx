@@ -64,6 +64,8 @@ describe('view toggles', () => {
 
   it('hides tool lines, system blocks and thinking according to the view', () => {
     const shown = renderToStaticMarkup(<Transcript transcript={transcript} view={all} sessionKey="k" following={false} />);
+    expect(shown).not.toContain('turn-index');
+    expect(shown).toContain('class="role"');
     expect(shown).toContain('class="tool"');
     expect(shown).toContain('class="system"');
     expect(shown).toContain('class="thinking"');
