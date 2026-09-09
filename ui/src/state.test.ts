@@ -17,6 +17,8 @@ describe('state: resuming a saved session', () => {
     expect(live.activeKey).toBe('live-1');
     const prompted = reducer(live, { type: 'local_prompt', key: 'live-1', text: 'second' });
     expect(prompted.sessions['live-1'].transcript.turns).toHaveLength(2);
+    const sent = prompted.sessions['live-1'].transcript.turns[1].blocks[0];
+    expect(sent.kind === 'user' && sent.at && !Number.isNaN(Date.parse(sent.at))).toBe(true);
   });
 
   it('starts a fresh session with an empty transcript', () => {

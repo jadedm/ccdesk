@@ -151,6 +151,17 @@ describe('noise filter', () => {
     expect(blocks[1]).toMatchObject({ kind: 'system', tag: 'system-reminder', text: 'remember the rules' });
     expect(blocks[2]).toMatchObject({ kind: 'system', tag: 'task-notification' });
     expect(blocks[3]).toMatchObject({ kind: 'system', tag: 'local-command-caveat', text: 'Caveat' });
+    const quoted = reduceAll([user('x'), user('<system-reminder>\nuse <br> not <div class="x">\n</system-reminder>')]);
+    expect(quoted.turns[0].blocks[1]).toMatchObject({ kind: 'system', text: 'use <br> not <div class="x">' });
+  });
+
+  it('stamps a live reply with the clock when the stream starts', () => {
+    const before = Date.now() - 1000;
+    const t = [user('hi'), { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } }]
+      .reduce((acc, r) => reduceRecord(acc, r), emptyTranscript());
+    const at = t.turns[0].replyAt;
+    expect(at).toBeTruthy();
+    expect(new Date(at!).getTime()).toBeGreaterThanOrEqual(before);
   });
 
   it('carries record timestamps onto the user block and the first reply block of a turn', () => {

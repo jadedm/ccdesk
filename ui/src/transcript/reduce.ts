@@ -93,7 +93,9 @@ const findOpen = (t: Transcript, kind: StreamingKind) => {
 // can open them when the question is "what did the harness tell Claude here".
 const systemTag = /^<(system-reminder|task-notification|local-command-caveat|local-command-stdout|local-command-stderr|command-message|command-args|command-contents|command-stdout|command-stderr|user-prompt-submit-hook|bash-stdout|bash-stderr)\b/;
 
-const stripTags = (text: string): string => text.replace(/<\/?[a-z-]+>/g, '').trim();
+/** Remove only the wrapper the harness added; whatever it quoted inside stays as written. */
+const unwrap = (text: string, tag: string): string =>
+  text.replace(new RegExp(`^<${tag}\\b[^>]*>`), '').replace(new RegExp(`</${tag}>\\s*$`), '').trim();
 
 const userTextToBlock = (text: string, at?: string): Block | null => {
   const trimmed = text.trim();
@@ -103,7 +105,7 @@ const userTextToBlock = (text: string, at?: string): Block | null => {
   const bash = trimmed.match(/^<bash-input>([\s\S]*?)<\/bash-input>/);
   if (bash) return { kind: 'user', id: nextId('user'), text: `! ${bash[1].trim()}`, at };
   const system = trimmed.match(systemTag);
-  if (system) return { kind: 'system', id: nextId('system'), tag: system[1], text: stripTags(trimmed) };
+  if (system) return { kind: 'system', id: nextId('system'), tag: system[1], text: unwrap(trimmed, system[1]) };
   if (trimmed.startsWith('[Request interrupted')) return { kind: 'note', id: nextId('note'), text: 'interrupted by user', tone: 'info' };
   return { kind: 'user', id: nextId('user'), text: trimmed, at };
 };
@@ -153,8 +155,9 @@ const userParts: Record<string, PartHandler> = {
 
 const applyUser = (t: Transcript, record: Record_): void => {
   const content = record.message?.content;
+  if (typeof content === 'string' && record.isMeta) return;
   if (typeof content === 'string') {
-    if (!record.isMeta) placeUserBlock(t, userTextToBlock(content, record.timestamp));
+    placeUserBlock(t, userTextToBlock(content, record.timestamp));
     return;
   }
   if (!Array.isArray(content)) return;

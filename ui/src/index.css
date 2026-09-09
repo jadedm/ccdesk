@@ -4,9 +4,9 @@
   --serif: "Newsreader Variable", "Iowan Old Style", Georgia, serif;
   --display: "Fraunces Variable", "Newsreader Variable", Georgia, serif;
   --mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 
-  --bg: #f4f1e9; --surface: #fffdf8; --surface2: #efeadc; --raise: #eae3d3;
+  color-scheme: light;
+  --bg: #f4f1e9; --surface: #fffdf8; --surface2: #efeadc;
   --border: #e4ddcd; --border2: #d5cdb9;
   --ink: #211e18; --ink2: #514c42; --muted: #8a8272; --faint: #a79f8f;
   --accent: #a94c31; --code-bg: #efeadd; --error: #a94c31; --ok: #4f7a4a; --warn: #b3801f;
@@ -14,7 +14,8 @@
   --prose-size: 16.5px;
 }
 :root[data-theme="dark"] {
-  --bg: #15140f; --surface: #1b1914; --surface2: #211f18; --raise: #28251d;
+  color-scheme: dark;
+  --bg: #15140f; --surface: #1b1914; --surface2: #211f18;
   --border: #2c2921; --border2: #3a362b;
   --ink: #eae4d6; --ink2: #b0a996; --muted: #867e6c; --faint: #655f51;
   --accent: #d07d5c; --code-bg: #100f0b; --error: #d07d5c; --ok: #8fb08a; --warn: #d1a24a;
@@ -85,7 +86,8 @@ a { color: var(--accent); }
 /* who and when */
 .role { font: 400 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .16em; margin: 14px 0 10px; display: flex; gap: 11px; color: var(--faint); }
 .role .who { color: var(--ink2); }
-.turn > .role:first-of-type { margin-top: 0; }
+/* the first label in a turn sits right under the turn number */
+.turn-index + .role { margin-top: 0; }
 
 /* user turns read as inset notes; Claude's replies flow as the document */
 .user { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; white-space: pre-wrap; margin: 0 0 6px; font-size: var(--prose-size); }
