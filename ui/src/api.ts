@@ -69,6 +69,7 @@ export class Socket {
   private ws: WebSocket | null = null;
   private attempts = 0;
   private closedByUser = false;
+  private retry: ReturnType<typeof setTimeout> | null = null;
   state: SocketState = 'connecting';
   private readonly url: string;
   private readonly onMessage: (m: ServerMessage) => void;
@@ -94,7 +95,7 @@ export class Socket {
       this.setState('closed');
       if (this.closedByUser) return;
       const delay = Math.min(10_000, 500 * 2 ** this.attempts++);
-      setTimeout(() => this.connect(), delay);
+      this.retry = setTimeout(() => this.connect(), delay);
     };
     ws.onerror = () => ws.close();
   }
@@ -112,6 +113,7 @@ export class Socket {
 
   close(): void {
     this.closedByUser = true;
+    if (this.retry) clearTimeout(this.retry);
     this.ws?.close();
   }
 }

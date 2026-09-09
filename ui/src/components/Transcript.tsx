@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.ts';
@@ -40,7 +40,8 @@ const formatInput = (input: Record<string, unknown>): string => {
   return keys.map((k) => `${k}: ${typeof input[k] === 'string' ? input[k] : JSON.stringify(input[k], null, 2)}`).join('\n');
 };
 
-const BlockView = ({ block }: { block: Block }) => {
+// Memoised: blocks are copied only when they change, so unchanged blocks skip the markdown parse.
+const BlockView = memo(({ block }: { block: Block }) => {
   switch (block.kind) {
     case 'user':
       return <div className="user">{block.text}</div>;
@@ -62,7 +63,7 @@ const BlockView = ({ block }: { block: Block }) => {
     case 'note':
       return <div className={block.tone === 'error' ? 'note error' : 'note'}>{block.text}</div>;
   }
-};
+});
 
 export const Transcript = ({ transcript, hideThinking }: { transcript: TranscriptModel; hideThinking: boolean }) => {
   const bottom = useRef<HTMLDivElement>(null);

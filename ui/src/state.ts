@@ -28,18 +28,33 @@ export type Action =
   | { type: 'local_prompt'; key: string; text: string }
   | { type: 'set_status'; key: string; status: SessionStatus }
   | { type: 'activate'; key: string }
-  | { type: 'rename'; key: string; title: string };
+  | { type: 'rename'; key: string; title: string }
+  | { type: 'permission_answered'; key: string }
+  | { type: 'socket_reset' };
 
 const messageType = (message: unknown): string => (message as { type?: string }).type ?? '';
 
+// A session is 'running' only between a prompt and its result. Start-up events (init,
+// started) leave it 'idle' so the composer offers Send rather than Interrupt.
+const afterStartup = (status: SessionStatus): SessionStatus => (status === 'starting' ? 'idle' : status);
+
 const applyServer = (session: SessionView, message: ServerMessage): SessionView => {
-  if (message.type === 'started') return { ...session, sessionId: message.sessionId, status: 'running' };
+  if (message.type === 'started') return { ...session, sessionId: message.sessionId, status: afterStartup(session.status) };
   if (message.type === 'ended') return { ...session, status: 'ended', permission: null };
   if (message.type === 'error') return { ...session, error: message.message };
   if (message.type === 'permission_request') return { ...session, permission: message };
   const kind = messageType(message.message);
-  const status: SessionStatus = kind === 'result' ? 'idle' : session.status === 'starting' ? 'running' : session.status;
+  const status: SessionStatus = kind === 'result' ? 'idle' : afterStartup(session.status);
   return { ...session, status, transcript: reduceRecord(session.transcript, message.message), permission: kind === 'result' ? null : session.permission };
+};
+
+// The sidecar stops every live session when its socket closes. After a reconnect, a session
+// with a known id becomes a saved session again, so the next prompt resumes it; one that
+// never reported an id has nothing to resume and is marked ended.
+const afterSocketReset = (session: SessionView): SessionView => {
+  if (session.status === 'history') return session;
+  if (session.sessionId) return { ...session, status: 'history', permission: null };
+  return { ...session, status: 'ended', permission: null, error: 'connection to the sidecar was lost before the session started' };
 };
 
 export const initialState: State = { sessions: {}, activeKey: null };
@@ -88,7 +103,7 @@ export const reducer = (state: State, action: Action): State => {
       const session = state.sessions[action.key];
       if (!session) return state;
       const record = { type: 'user', message: { role: 'user', content: action.text } };
-      const next = { ...session, status: 'running' as const, transcript: reduceRecord(session.transcript, record) };
+      const next = { ...session, status: 'running' as const, error: null, transcript: reduceRecord(session.transcript, record) };
       return { ...state, sessions: { ...state.sessions, [action.key]: next } };
     }
     case 'set_status': {
@@ -103,5 +118,12 @@ export const reducer = (state: State, action: Action): State => {
     }
     case 'activate':
       return { ...state, activeKey: action.key };
+    case 'permission_answered': {
+      const session = state.sessions[action.key];
+      if (!session) return state;
+      return { ...state, sessions: { ...state.sessions, [action.key]: { ...session, permission: null } } };
+    }
+    case 'socket_reset':
+      return { ...state, sessions: Object.fromEntries(Object.entries(state.sessions).map(([k, v]) => [k, afterSocketReset(v)])) };
   }
 };

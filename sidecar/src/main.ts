@@ -10,7 +10,7 @@ const main = async (): Promise<void> => {
   const server = await startServer({
     indexPath: process.env.CCDESK_INDEX ?? join(homedir(), '.ccdesk', 'index.json'),
     sdkVersion: sdkVersion(),
-    claudeBinary: process.env.CCDESK_CLAUDE_BIN,
+    claudeBinary: process.env.CCDESK_CLAUDE_BIN || undefined,
     port: process.env.CCDESK_PORT ? Number(process.env.CCDESK_PORT) : undefined,
     token: process.env.CCDESK_TOKEN || undefined,
   });
@@ -23,6 +23,13 @@ const main = async (): Promise<void> => {
   process.stdin.on('end', shutdown);
   process.stdin.resume();
 };
+
+// The sidecar hosts every live session, so one failure inside the SDK (a spawn error
+// surfacing as an unhandled 'error' event, for example) must not take the process down.
+// Log it; the affected session reports its own failure over the socket.
+const describe = (error: unknown): string => (error instanceof Error ? error.stack ?? error.message : String(error));
+process.on('uncaughtException', (error) => process.stderr.write(`uncaught: ${describe(error)}\n`));
+process.on('unhandledRejection', (error) => process.stderr.write(`unhandled rejection: ${describe(error)}\n`));
 
 main().catch((error: unknown) => {
   process.stderr.write(`sidecar failed: ${error instanceof Error ? error.stack : String(error)}\n`);

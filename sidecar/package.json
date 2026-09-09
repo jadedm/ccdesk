@@ -22,5 +22,8 @@
     "oxlint": "^1.82.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IndexStore } from './index-store.ts';
@@ -43,6 +43,19 @@ describe('IndexStore', () => {
     expect(await codeOf(store.createFolder('nope', 'x'))).toBe('404 workspace_not_found');
     expect(await codeOf(store.fileSession('nope', 'abc', '/tmp'))).toBe('404 folder_not_found');
     expect(store.snapshot().workspaces).toEqual([]);
+  });
+
+  it('moves an unreadable index aside and starts empty', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ccdesk-index-'));
+    const path = join(dir, 'index.json');
+    await writeFile(path, '{"version": 9, "nope": true}');
+    const store = new IndexStore(path);
+    const warning = await store.load();
+    expect(warning).toContain('moved to');
+    expect(store.snapshot()).toEqual({ version: 1, workspaces: [] });
+    expect((await readdir(dir)).some((f) => f.startsWith('index.json.unreadable-'))).toBe(true);
+    await store.createWorkspace('W', '/tmp');
+    expect(JSON.parse(await readFile(path, 'utf8')).workspaces).toHaveLength(1);
   });
 
   it('files a session once and refuses a second filing of the same id', async () => {

@@ -24,6 +24,43 @@ describe('state: resuming a saved session', () => {
     expect(live.sessions['live-2'].transcript.turns).toEqual([]);
   });
 
+  it('is idle after start-up so the composer offers Send, and running only after a prompt', () => {
+    let s = reducer(initialState, { type: 'new_live', key: 'k', cwd: '/w', folderId: null, title: 'N', resume: null });
+    expect(s.sessions.k.status).toBe('starting');
+    s = reducer(s, { type: 'server', message: { type: 'started', key: 'k', sessionId: 'abc' } });
+    expect(s.sessions.k.status).toBe('idle');
+    s = reducer(s, { type: 'server', message: { type: 'event', key: 'k', message: { type: 'system', subtype: 'init' } } });
+    expect(s.sessions.k.status).toBe('idle');
+    s = reducer(s, { type: 'local_prompt', key: 'k', text: 'go' });
+    expect(s.sessions.k.status).toBe('running');
+    s = reducer(s, { type: 'server', message: { type: 'event', key: 'k', message: { type: 'result', is_error: false } } });
+    expect(s.sessions.k.status).toBe('idle');
+  });
+
+  it('turns live sessions back into saved ones when the socket reconnects', () => {
+    let s = reducer(initialState, { type: 'new_live', key: 'a', cwd: '/w', folderId: null, title: 'A', resume: null });
+    s = reducer(s, { type: 'server', message: { type: 'started', key: 'a', sessionId: 'sid-a' } });
+    s = reducer(s, { type: 'new_live', key: 'b', cwd: '/w', folderId: null, title: 'B', resume: null });
+    s = reducer(s, { type: 'open_history', key: 'h', sessionId: 'sid-h', cwd: '/w', folderId: null, title: 'H', records: [] });
+    s = reducer(s, { type: 'socket_reset' });
+    expect(s.sessions.a.status).toBe('history');
+    expect(s.sessions.a.sessionId).toBe('sid-a');
+    expect(s.sessions.b.status).toBe('ended');
+    expect(s.sessions.b.error).toContain('lost');
+    expect(s.sessions.h.status).toBe('history');
+  });
+
+  it('clears the permission card when the user answers and the error when they prompt again', () => {
+    let s = reducer(initialState, { type: 'new_live', key: 'k', cwd: '/w', folderId: null, title: 'N', resume: null });
+    s = reducer(s, { type: 'server', message: { type: 'permission_request', key: 'k', requestId: 'r', toolName: 'Bash', input: {}, toolUseID: 't' } });
+    s = reducer(s, { type: 'permission_answered', key: 'k' });
+    expect(s.sessions.k.permission).toBeNull();
+    s = reducer(s, { type: 'server', message: { type: 'error', key: 'k', message: 'boom' } });
+    expect(s.sessions.k.error).toBe('boom');
+    s = reducer(s, { type: 'local_prompt', key: 'k', text: 'again' });
+    expect(s.sessions.k.error).toBeNull();
+  });
+
   it('routes server events to the right session and clears the permission on result', () => {
     let s = reducer(initialState, { type: 'new_live', key: 'k', cwd: '/w', folderId: null, title: 'N', resume: null });
     s = reducer(s, { type: 'server', message: { type: 'started', key: 'k', sessionId: 'abc' } });

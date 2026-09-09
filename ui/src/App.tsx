@@ -26,6 +26,7 @@ export default function App() {
   const [index, setIndex] = useState<WorkspaceIndex | null>(null);
   const [unfiled, setUnfiled] = useState<Record<string, SessionSummary[]>>({});
   const [socketState, setSocketState] = useState<SocketState>('connecting');
+  const everOpen = useRef(false);
   const [hideThinking, setHideThinking] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
@@ -50,16 +51,17 @@ export default function App() {
       api.socketUrl(),
       (message) => {
         dispatch({ type: 'server', message });
-        if (message.type === 'started') {
-          const filing = pendingFile.current[message.key];
-          if (!filing) return;
-          delete pendingFile.current[message.key];
-          void api.fileSession(filing.folderId, message.sessionId, filing.cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)));
-        }
+        const filing = message.type === 'started' ? pendingFile.current[message.key] : undefined;
+        if (!filing || message.type !== 'started') return;
+        delete pendingFile.current[message.key];
+        void api.fileSession(filing.folderId, message.sessionId, filing.cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)));
       },
       (st) => {
         setSocketState(st);
-        if (st === 'open') void refreshIndex().catch((e: unknown) => setAppError(String(e)));
+        if (st !== 'open') return;
+        if (everOpen.current) dispatch({ type: 'socket_reset' });
+        everOpen.current = true;
+        void refreshIndex().catch((e: unknown) => setAppError(String(e)));
       },
     );
     socket.current = s;
@@ -73,9 +75,11 @@ export default function App() {
     setAppError('sidecar is not connected; message not sent');
   }, []);
 
+  // A saved session, or a live one that ended, resumes by id on the next prompt.
   const ensureLive = useCallback((key: string): string => {
     const session = stateRef.current.sessions[key];
-    if (!session || session.status !== 'history' || !session.sessionId) return key;
+    const resumable = session?.status === 'history' || session?.status === 'ended';
+    if (!session || !resumable || !session.sessionId) return key;
     const liveKey = newKey();
     dispatch({ type: 'new_live', key: liveKey, cwd: session.cwd, folderId: session.folderId, title: session.title, resume: session.sessionId, fromKey: key });
     send({ type: 'start', key: liveKey, cwd: session.cwd, resume: session.sessionId });
@@ -98,22 +102,27 @@ export default function App() {
 
   const onOpenSession = async (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string) => {
     if (!api) return;
+    const cwd = folder?.sessions.find((s) => s.sessionId === sessionId)?.cwd ?? ws.cwd;
     const existing = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
     if (existing) {
       dispatch({ type: 'activate', key: existing.key });
       return;
     }
-    const records = await api.messages(sessionId, ws.cwd).catch((e: unknown) => {
+    const records = await api.messages(sessionId, cwd).catch((e: unknown) => {
       setAppError(String(e));
       return [] as unknown[];
     });
-    dispatch({ type: 'open_history', key: `hist-${sessionId}`, sessionId, cwd: ws.cwd, folderId: folder?.id ?? null, title, records });
+    dispatch({ type: 'open_history', key: `hist-${sessionId}`, sessionId, cwd, folderId: folder?.id ?? null, title, records });
   };
 
   const onRename = async (title: string) => {
     setRenaming(false);
     if (!api || !active?.sessionId || title.trim() === '' || title === active.title) return;
-    await api.rename(active.sessionId, active.cwd, title.trim()).catch((e: unknown) => setAppError(String(e)));
+    const renamed = await api.rename(active.sessionId, active.cwd, title.trim()).then(() => true).catch((e: unknown) => {
+      setAppError(String(e));
+      return false;
+    });
+    if (!renamed) return;
     dispatch({ type: 'rename', key: active.key, title: title.trim() });
     void refreshIndex();
   };
@@ -171,7 +180,10 @@ export default function App() {
             permission={active.permission}
             onSend={onSend}
             onInterrupt={() => send({ type: 'interrupt', key: active.key })}
-            onPermission={(requestId, behavior, always) => send({ type: 'permission', key: active.key, requestId, behavior, always })}
+            onPermission={(requestId, behavior, always) => {
+              send({ type: 'permission', key: active.key, requestId, behavior, always });
+              dispatch({ type: 'permission_answered', key: active.key });
+            }}
           />
         )}
       </main>

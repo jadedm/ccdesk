@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomBytes } from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { getSessionMessages, listSessions, renameSession } from '@anthropic-ai/claude-agent-sdk';
-import type { ClientMessage, ServerMessage, SidecarInfo } from '../../shared/protocol.ts';
+import type { ClientMessage, PermissionMode, ServerMessage, SidecarInfo } from '../../shared/protocol.ts';
 import { HttpError, badRequest, notFound } from './errors.ts';
 import { IndexStore } from './index-store.ts';
 import { SessionManager } from './sessions.ts';
@@ -10,6 +10,8 @@ import { SessionManager } from './sessions.ts';
 export type ServerConfig = { indexPath: string; sdkVersion: string; claudeBinary?: string; port?: number; token?: string };
 
 type Params = Record<string, string>;
+
+const permissionModes: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk', 'auto'];
 type Handler = (req: IncomingMessage, params: Params, body: Record<string, unknown>, url: URL) => Promise<unknown>;
 type Route = { method: string; pattern: RegExp; keys: string[]; handler: Handler };
 
@@ -22,9 +24,16 @@ const route = (method: string, path: string, handler: Handler): Route => {
   return { method, pattern: new RegExp(`^${source}$`), keys, handler };
 };
 
+const maxBodyBytes = 1_000_000;
+
 const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> => {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > maxBodyBytes) throw badRequest('body_too_large');
+    chunks.push(chunk as Buffer);
+  }
   const text = Buffer.concat(chunks).toString('utf8');
   if (text.trim() === '') return {};
   const parsed: unknown = JSON.parse(text);
@@ -55,6 +64,7 @@ const sendJson = (res: ServerResponse, status: number, body: unknown): void => {
 const errorBody = (error: unknown): { status: number; body: { error: string; message: string } } => {
   if (error instanceof HttpError) return { status: error.status, body: { error: error.code, message: error.message } };
   if (error instanceof SyntaxError) return { status: 400, body: { error: 'invalid_json', message: error.message } };
+  if (error instanceof URIError) return { status: 400, body: { error: 'bad_path', message: error.message } };
   const message = error instanceof Error ? error.message : String(error);
   return { status: 500, body: { error: 'internal', message } };
 };
@@ -64,7 +74,8 @@ export type RunningServer = SidecarInfo & { close: () => Promise<void> };
 export const startServer = async (config: ServerConfig): Promise<RunningServer> => {
   const token = config.token ?? randomBytes(24).toString('hex');
   const store = new IndexStore(config.indexPath);
-  await store.load();
+  const warning = await store.load();
+  if (warning) process.stderr.write(`${warning}\n`);
 
   const routes: Route[] = [
     route('GET', '/health', async () => ({ ok: true, sdkVersion: config.sdkVersion })),
@@ -85,10 +96,10 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     }),
   ];
 
-  const authorized = (req: IncomingMessage, url: URL): boolean => {
-    const header = req.headers.authorization ?? '';
-    return header === `Bearer ${token}` || url.searchParams.get('token') === token;
-  };
+  // HTTP routes take the token as a bearer header only. The WebSocket upgrade is the one
+  // place a browser cannot set a header, so that route alone accepts it as a query parameter.
+  const authorized = (req: IncomingMessage): boolean => (req.headers.authorization ?? '') === `Bearer ${token}`;
+  const upgradeAuthorized = (url: URL): boolean => url.searchParams.get('token') === token;
 
   const dispatch = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -97,7 +108,7 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
       res.end();
       return;
     }
-    if (!authorized(req, url)) return sendJson(res, 401, { error: 'unauthorized' });
+    if (!authorized(req)) return sendJson(res, 401, { error: 'unauthorized' });
     const match = routes
       .map((r) => ({ r, m: req.method === r.method ? url.pathname.match(r.pattern) : null }))
       .find((x) => x.m !== null);
@@ -119,7 +130,7 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
 
   http.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    if (url.pathname !== '/ws' || !authorized(req, url)) {
+    if (url.pathname !== '/ws' || !upgradeAuthorized(url)) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
       return;
@@ -140,17 +151,28 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     });
   };
 
-  const handle = (manager: SessionManager, send: (m: ServerMessage) => void, raw: string): void => {
-    let message: ClientMessage;
+  const parseFrame = (raw: string): ClientMessage | null => {
     try {
-      message = JSON.parse(raw) as ClientMessage;
+      const parsed: unknown = JSON.parse(raw);
+      const shaped = typeof parsed === 'object' && parsed !== null && typeof (parsed as { type?: unknown }).type === 'string';
+      return shaped && typeof (parsed as { key?: unknown }).key === 'string' ? (parsed as ClientMessage) : null;
     } catch {
-      send({ type: 'error', key: '', message: 'invalid json' });
+      return null;
+    }
+  };
+
+  const handle = (manager: SessionManager, send: (m: ServerMessage) => void, raw: string): void => {
+    const message = parseFrame(raw);
+    if (!message) {
+      send({ type: 'error', key: '', message: 'malformed frame: expected an object with string type and key' });
       return;
     }
     const actions: Record<ClientMessage['type'], () => void> = {
       start: () => {
         const m = message as Extract<ClientMessage, { type: 'start' }>;
+        if (typeof m.cwd !== 'string' || !m.cwd.startsWith('/')) throw badRequest('cwd_required', 'absolute cwd required');
+        if (m.permissionMode !== undefined && !permissionModes.includes(m.permissionMode)) throw badRequest('bad_permission_mode');
+        if (m.resume !== undefined && (typeof m.resume !== 'string' || m.resume === '')) throw badRequest('bad_resume');
         manager.start(m.key, { cwd: m.cwd, resume: m.resume, permissionMode: m.permissionMode });
       },
       prompt: () => {
@@ -166,10 +188,16 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     };
     const action = actions[message.type];
     if (!action) {
-      send({ type: 'error', key: message.key ?? '', message: `unknown message type` });
+      send({ type: 'error', key: message.key, message: `unknown message type ${message.type}` });
       return;
     }
-    action();
+    // A throw here is one client's bad frame or one session's failure to start, never a
+    // reason to drop every other session on the socket.
+    try {
+      action();
+    } catch (error) {
+      send({ type: 'error', key: message.key, message: error instanceof Error ? error.message : String(error) });
+    }
   };
 
   await new Promise<void>((resolve) => http.listen(config.port ?? 0, '127.0.0.1', resolve));

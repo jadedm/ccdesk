@@ -40,7 +40,7 @@ export const Composer = ({ status, permission, onSend, onInterrupt, onPermission
     e.preventDefault();
     submit();
   };
-  const running = status === 'running' || status === 'starting';
+  const running = status === 'running';
   const hint = status === 'history' ? 'Enter resumes this session with your message' : 'Enter to send, Shift Enter for a new line';
   return (
     <div className="bottom">

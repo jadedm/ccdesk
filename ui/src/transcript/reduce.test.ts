@@ -6,8 +6,7 @@ import { emptyTranscript } from './blocks.ts';
 const user = (content: unknown, extra: Record<string, unknown> = {}) => ({ type: 'user', message: { role: 'user', content }, ...extra });
 const assistant = (content: unknown[]) => ({ type: 'assistant', message: { role: 'assistant', model: 'claude-test', content } });
 
-describe('reduce: history and live agree', () => {
-  const history = [
+const history = [
     user('list the files'),
     assistant([{ type: 'thinking', thinking: 'I should run ls' }]),
     assistant([{ type: 'text', text: 'Listing now.' }]),
@@ -16,7 +15,7 @@ describe('reduce: history and live agree', () => {
     assistant([{ type: 'text', text: 'Three files.' }]),
   ];
 
-  const live = [
+const live = [
     user('list the files'),
     { type: 'system', subtype: 'init', model: 'claude-test', claude_code_version: '2.1.266' },
     { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } } },
@@ -33,6 +32,7 @@ describe('reduce: history and live agree', () => {
     { type: 'result', subtype: 'success', is_error: false },
   ];
 
+describe('reduce: history and live agree', () => {
   const strip = (t: ReturnType<typeof reduceAll>) =>
     t.turns.map((turn) => turn.blocks.map((b) => {
       const { id: _id, ...rest } = b as Record<string, unknown>;
@@ -80,6 +80,33 @@ describe('reduce: history and live agree', () => {
     const t = reduceAll([user('one'), assistant([{ type: 'text', text: 'a' }]), user('two'), { type: 'result', is_error: true, result: 'boom' }]);
     expect(t.turns).toHaveLength(2);
     expect(t.turns[1].blocks.map((b) => b.kind)).toEqual(['user', 'note']);
+  });
+});
+
+describe('reduce: live and history stay aligned in the awkward cases', () => {
+  it('drops subagent traffic from the live view, as the session store does from history', () => {
+    const sub = { type: 'assistant', parent_tool_use_id: 'toolu_agent', message: { role: 'assistant', content: [{ type: 'text', text: 'inner monologue' }] } };
+    const subStream = { type: 'stream_event', parent_tool_use_id: 'toolu_agent', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'leak' } } };
+    const t = [user('go'), { type: 'stream_event', parent_tool_use_id: null, event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } }, sub, subStream]
+      .reduce((acc, r) => reduceRecord(acc, r), emptyTranscript());
+    const texts = t.turns[0].blocks.filter((b) => b.kind === 'text');
+    expect(texts).toHaveLength(1);
+    expect(texts[0].kind === 'text' && texts[0].text).toBe('');
+  });
+
+  it('closes an unanswered tool call when history ends, so it does not show as running', () => {
+    const t = reduceAll([user('x'), assistant([{ type: 'tool_use', id: 'toolu_9', name: 'Bash', input: { command: 'sleep 100' } }])]);
+    const tool = t.turns[0].blocks.find((b) => b.kind === 'tool');
+    expect(tool && tool.kind === 'tool' && tool.streaming).toBe(false);
+    expect(tool && tool.kind === 'tool' && tool.result).toBeUndefined();
+  });
+
+  it('shares unchanged blocks between states and copies only what changed', () => {
+    const before = live.slice(0, 7).reduce((acc, r) => reduceRecord(acc, r), emptyTranscript());
+    const after = reduceRecord(before, live[7]);
+    expect(after.turns[0].blocks[0]).toBe(before.turns[0].blocks[0]);
+    expect(after.turns[0].blocks[1]).toBe(before.turns[0].blocks[1]);
+    expect(after.turns[0].blocks[2]).not.toBe(before.turns[0].blocks[2]);
   });
 });
 

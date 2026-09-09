@@ -85,7 +85,15 @@ class LiveSession {
       pathToClaudeCodeExecutable: claudeBinary,
       stderr: (line) => process.stderr.write(`[sdk ${this.key}] ${line}`),
     };
-    this.query = query({ prompt: this.prompts, options: sdkOptions });
+    // query() can throw synchronously, for example when the CLI binary is missing. That is
+    // a session failure to report, not a reason for the sidecar process to die.
+    try {
+      this.query = query({ prompt: this.prompts, options: sdkOptions });
+    } catch (error) {
+      this.emit({ type: 'error', key: this.key, message: error instanceof Error ? error.message : String(error) });
+      this.emit({ type: 'ended', key: this.key, reason: 'error' });
+      return;
+    }
     void this.pump(this.query);
   }
 
@@ -154,7 +162,10 @@ export class SessionManager {
       this.emit({ type: 'error', key, message: 'session key already live' });
       return;
     }
-    const session = new LiveSession(key, this.emit);
+    const session = new LiveSession(key, (message) => {
+      if (message.type === 'ended') this.sessions.delete(key);
+      this.emit(message);
+    });
     this.sessions.set(key, session);
     session.start(options, this.claudeBinary);
   }

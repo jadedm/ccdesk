@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, RunEvent, State};
@@ -87,10 +88,22 @@ fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(Child, SidecarInfo), String>
         .spawn()
         .map_err(|e| format!("cannot start sidecar {}: {e}", script.display()))?;
     let stdout = child.stdout.take().ok_or("sidecar has no stdout")?;
+    let mut reader = BufReader::new(stdout);
     let mut first_line = String::new();
-    BufReader::new(stdout)
+    reader
         .read_line(&mut first_line)
         .map_err(|e| format!("cannot read sidecar banner: {e}"))?;
+    // Keep draining stdout for the life of the sidecar. Dropping the pipe would turn any
+    // later write into EPIPE and end the sidecar.
+    std::thread::spawn(move || {
+        let mut sink = String::new();
+        while let Ok(n) = reader.read_line(&mut sink) {
+            if n == 0 {
+                break;
+            }
+            sink.clear();
+        }
+    });
     let info: SidecarInfo = serde_json::from_str(first_line.trim()).map_err(|e| {
         let _ = child.kill();
         format!("sidecar exited before announcing a port ({e}); see the sidecar log")
@@ -108,11 +121,20 @@ fn sidecar_info(state: State<Sidecar>) -> Result<SidecarInfo, String> {
     Err(failure.unwrap_or_else(|| "sidecar not running".to_string()))
 }
 
+/// Closing stdin is the quit signal. The sidecar then closes its sessions, which is what
+/// terminates the CLI child processes underneath it. Only if it has not exited within the
+/// grace period is it killed.
 fn stop_sidecar(state: &Sidecar) {
     let Ok(mut guard) = state.child.lock() else { return };
     let Some(mut child) = guard.take() else { return };
-    // Dropping stdin closes the pipe; the sidecar exits on stdin end. Kill as a backstop.
     drop(child.stdin.take());
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
     let _ = child.kill();
     let _ = child.wait();
 }

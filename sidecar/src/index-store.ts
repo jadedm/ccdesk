@@ -6,6 +6,15 @@ import { badRequest, conflict, notFound } from './errors.ts';
 
 const emptyIndex = (): WorkspaceIndex => ({ version: 1, workspaces: [] });
 
+const parseIndex = (raw: string): WorkspaceIndex | null => {
+  try {
+    const parsed = JSON.parse(raw) as WorkspaceIndex;
+    return parsed.version === 1 && Array.isArray(parsed.workspaces) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 const cleanName = (name: unknown): string => {
   const trimmed = typeof name === 'string' ? name.trim() : '';
   if (trimmed === '') throw badRequest('name_required');
@@ -24,12 +33,18 @@ export class IndexStore {
 
   constructor(private readonly path: string) {}
 
-  async load(): Promise<void> {
+  /** A corrupt or foreign index is moved aside and reported, never a reason to fail launch. */
+  async load(): Promise<string | null> {
     const raw = await readFile(this.path, 'utf8').catch(() => null);
-    if (raw === null) return;
-    const parsed = JSON.parse(raw) as WorkspaceIndex;
-    if (parsed.version !== 1 || !Array.isArray(parsed.workspaces)) throw new Error(`unreadable index at ${this.path}`);
-    this.index = parsed;
+    if (raw === null) return null;
+    const parsed = parseIndex(raw);
+    if (parsed) {
+      this.index = parsed;
+      return null;
+    }
+    const aside = `${this.path}.unreadable-${Date.now()}`;
+    await rename(this.path, aside);
+    return `index at ${this.path} was unreadable and has been moved to ${aside}; starting empty`;
   }
 
   snapshot(): WorkspaceIndex {

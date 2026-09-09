@@ -58,6 +58,67 @@ describe('sidecar http', () => {
     await fixed.close();
   });
 
+  it('reports a session that cannot start as an error event instead of dying', async () => {
+    const broken = await startServer({ indexPath: join(emptyDir, 'b.json'), sdkVersion: 'test', claudeBinary: '/nonexistent/claude' });
+    const messages = await new Promise<string[]>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${broken.port}/ws?token=${broken.token}`);
+      const seen: string[] = [];
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'start', key: 'x', cwd: emptyDir }));
+        ws.send(JSON.stringify({ type: 'prompt', key: 'x', text: 'hi' }));
+      });
+      ws.on('message', (raw) => {
+        const m = JSON.parse(raw.toString()) as { type: string; message?: string; reason?: string };
+        seen.push(`${m.type}:${m.message ?? m.reason ?? ''}`);
+        if (m.type === 'ended') {
+          ws.close();
+          resolve(seen);
+        }
+      });
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error(`no ended event, saw ${seen.join(' | ')}`)), 30_000);
+    });
+    expect(messages.some((m) => m.startsWith('error:'))).toBe(true);
+    expect(messages[messages.length - 1]).toBe('ended:error');
+    const health = await fetch(`http://127.0.0.1:${broken.port}/health`, { headers: { authorization: `Bearer ${broken.token}` } });
+    expect(health.status).toBe(200);
+    await broken.close();
+  });
+
+  it('accepts the token as a query parameter on the upgrade only', async () => {
+    expect((await fetch(`${base}/health?token=${server.token}`)).status).toBe(401);
+  });
+
+  it('survives malformed frames and bad start requests, answering each with an error', async () => {
+    const replies = await new Promise<string[]>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws?token=${server.token}`);
+      const seen: string[] = [];
+      ws.on('open', () => {
+        ws.send('null');
+        ws.send('{not json');
+        ws.send(JSON.stringify({ type: 'start', key: 'bad', cwd: 'relative' }));
+        ws.send(JSON.stringify({ type: 'start', key: 'bad2', cwd: emptyDir, permissionMode: 'god' }));
+        ws.send(JSON.stringify({ type: 'nope', key: 'k' }));
+      });
+      ws.on('message', (raw) => {
+        const m = JSON.parse(raw.toString()) as { type: string; key: string; message: string };
+        seen.push(`${m.key}:${m.message}`);
+        if (seen.length === 5) {
+          ws.close();
+          resolve(seen);
+        }
+      });
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error(`saw ${seen.join(' | ')}`)), 10_000);
+    });
+    expect(replies[0]).toContain('malformed frame');
+    expect(replies[1]).toContain('malformed frame');
+    expect(replies[2]).toBe('bad:absolute cwd required');
+    expect(replies[3]).toBe('bad2:bad_permission_mode');
+    expect(replies[4]).toContain('unknown message type');
+    expect((await call('GET', '/health')).status).toBe(200);
+  });
+
   it('rejects a websocket upgrade without the token', async () => {
     const outcome = await new Promise<string>((resolve) => {
       const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);

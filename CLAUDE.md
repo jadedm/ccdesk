@@ -27,13 +27,15 @@ pnpm test:live       # real API turns, a few minutes
 pnpm build           # sidecar bundle and ui dist
 ./scripts/prepare-resources.sh
 cargo check --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 pnpm tauri dev
-pnpm tauri build     # unsigned .app and .dmg under src-tauri/target/release/bundle
+pnpm tauri build     # unsigned .app under src-tauri/target/release/bundle/macos
 ```
 
-Browser dev mode without Tauri: run `node sidecar/dist/sidecar.cjs`, take the port and token
-from its first stdout line, run `pnpm --filter ui dev`, open
-`http://localhost:1420/?port=<port>&token=<token>`.
+Browser dev mode without Tauri: run `CCDESK_TOKEN=dev node sidecar/dist/sidecar.cjs`, take the
+port from its first stdout line, run `pnpm --filter ui dev`, open
+`http://localhost:1420/?port=<port>&token=dev`. The token in the URL is a dev convenience;
+the packaged app hands it to the webview through `sidecar_info` instead.
 
 ## Conventions
 
@@ -43,4 +45,5 @@ from its first stdout line, run `pnpm --filter ui dev`, open
   `renameSession` so the terminal `/resume` picker shows the same title.
 - `settingSources` is `user, project, local` and the system prompt is the `claude_code`
   preset, so CLAUDE.md, hooks, skills and MCP servers load as in the terminal.
-- Requires Node 22 and a Claude Code login under `~/.claude`.
+- Requires Node 22 and a Claude Code login under `~/.claude`. The sidecar's stderr goes to
+  `~/Library/Logs/com.manishj.ccdesk/sidecar.log` in the packaged app.
