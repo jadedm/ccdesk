@@ -177,6 +177,7 @@ fn stop_sidecar(state: &Sidecar) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Sidecar { child: Mutex::new(None), info: Mutex::new(None), failure: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![sidecar_info])
         .setup(|app| {

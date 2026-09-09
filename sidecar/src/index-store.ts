@@ -58,9 +58,11 @@ export class IndexStore {
     return structuredClone(workspace);
   }
 
-  async createFolder(workspaceId: string, name: unknown): Promise<IndexFolder> {
+  /** A folder may carry its own directory; sessions started in it run there. */
+  async createFolder(workspaceId: string, name: unknown, cwd?: unknown): Promise<IndexFolder> {
     const workspace = this.workspace(workspaceId);
     const folder: IndexFolder = { id: randomUUID(), name: cleanName(name), sessions: [] };
+    if (cwd !== undefined && cwd !== null && cwd !== '') folder.cwd = cleanPath(cwd, 'cwd_required');
     workspace.folders.push(folder);
     await this.save();
     return structuredClone(folder);

@@ -12,7 +12,7 @@ import type { PermissionMode, ServerMessage } from '../../shared/protocol.ts';
 
 export type Emit = (message: ServerMessage) => void;
 
-type StartOptions = { cwd: string; resume?: string; permissionMode?: PermissionMode };
+type StartOptions = { cwd: string; resume?: string; permissionMode?: PermissionMode; title?: string };
 
 /** A push queue exposed as the async iterable the SDK reads prompts from. */
 class PromptQueue implements AsyncIterable<SDKUserMessage> {
@@ -76,6 +76,7 @@ class LiveSession {
     const sdkOptions: Options = {
       cwd: options.cwd,
       resume: options.resume,
+      title: options.title,
       permissionMode: options.permissionMode ?? 'default',
       includePartialMessages: true,
       settingSources: ['user', 'project', 'local'],

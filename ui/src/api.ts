@@ -49,7 +49,8 @@ export class Api {
   health = () => this.call<{ ok: boolean; sdkVersion: string }>('GET', '/health');
   index = () => this.call<WorkspaceIndex>('GET', '/index');
   createWorkspace = (name: string, cwd: string) => this.call<{ id: string }>('POST', '/workspaces', { name, cwd });
-  createFolder = (workspaceId: string, name: string) => this.call<{ id: string }>('POST', `/workspaces/${workspaceId}/folders`, { name });
+  createFolder = (workspaceId: string, name: string, cwd: string | null) =>
+    this.call<{ id: string }>('POST', `/workspaces/${workspaceId}/folders`, { name, cwd: cwd ?? undefined });
   fileSession = (folderId: string, sessionId: string, cwd: string) =>
     this.call<unknown>('POST', `/folders/${folderId}/sessions`, { sessionId, cwd });
   sessions = (cwd: string) => this.call<SessionSummary[]>('GET', `/sessions?cwd=${encodeURIComponent(cwd)}`);

@@ -78,7 +78,7 @@ describe.skipIf(!live)('live session over the sidecar', () => {
   });
 
   it('8 and 9: starts a session, streams pong, takes a second prompt on the same session', async () => {
-    client.send({ type: 'start', key: 'a', cwd, permissionMode: 'default' });
+    client.send({ type: 'start', key: 'a', cwd, permissionMode: 'default', title: 'named at start' });
     client.send({ type: 'prompt', key: 'a', text: 'Reply with exactly one word: pong' });
     const started = await client.waitFor((m) => m.type === 'started' && m.key === 'a');
     firstSessionId = (started as { sessionId: string }).sessionId;
@@ -139,9 +139,11 @@ describe.skipIf(!live)('live session over the sidecar', () => {
     expect(assistantText(client, 'd').toLowerCase()).toContain('pong');
   });
 
-  it('14: renames a session and the listing shows the custom title', async () => {
+  it('14: a session named at start carries its title, and rename replaces it', async () => {
     const headers = { authorization: `Bearer ${server.token}`, 'content-type': 'application/json' };
     const base = `http://127.0.0.1:${server.port}`;
+    const before = (await (await fetch(`${base}/sessions?cwd=${encodeURIComponent(cwd)}`, { headers })).json()) as Array<{ sessionId: string; customTitle?: string }>;
+    expect(before.find((s) => s.sessionId === firstSessionId)?.customTitle).toBe('named at start');
     const patch = await fetch(`${base}/sessions/${firstSessionId}`, { method: 'PATCH', headers, body: JSON.stringify({ cwd, title: 'smoke one' }) });
     expect(patch.status).toBe(200);
     const list = (await (await fetch(`${base}/sessions?cwd=${encodeURIComponent(cwd)}`, { headers })).json()) as Array<{ sessionId: string; customTitle?: string }>;

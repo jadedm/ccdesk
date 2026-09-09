@@ -4,6 +4,8 @@ import { Api, Socket, discoverSidecar, type SocketState } from './api.ts';
 import { Composer } from './components/Composer.tsx';
 import { Transcript } from './components/Transcript.tsx';
 import { Tree } from './components/Tree.tsx';
+import { folderCwd, workspaceDirs } from './cwd.ts';
+import { clampRail, clampText, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { initialState, reducer } from './state.ts';
 
 let keyCounter = 0;
@@ -27,7 +29,15 @@ export default function App() {
   const [unfiled, setUnfiled] = useState<Record<string, SessionSummary[]>>({});
   const [socketState, setSocketState] = useState<SocketState>('connecting');
   const everOpen = useRef(false);
-  const [hideThinking, setHideThinking] = useState(true);
+  const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
+  const setPrefs = (change: Partial<Prefs>) =>
+    setPrefsState((current) => {
+      const next = { ...current, ...change };
+      savePrefs(next);
+      return next;
+    });
+  const hideThinking = prefs.hideThinking;
+  const dragging = useRef(false);
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const socket = useRef<Socket | null>(null);
@@ -41,7 +51,15 @@ export default function App() {
     if (!api) return;
     const idx = await api.index();
     setIndex(idx);
-    const lists = await Promise.all(idx.workspaces.map(async (w) => [w.id, await api.sessions(w.cwd).catch(() => [])] as const));
+    // Unfiled covers the workspace directory and every folder directory, without repeats.
+    const lists = await Promise.all(
+      idx.workspaces.map(async (w) => {
+        const found = await Promise.all(workspaceDirs(w).map((d) => api.sessions(d).catch(() => [] as SessionSummary[])));
+        const seen = new Set<string>();
+        const merged = found.flat().filter((s) => (seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true)));
+        return [w.id, merged] as const;
+      }),
+    );
     setUnfiled(Object.fromEntries(lists));
   }, [api]);
 
@@ -93,16 +111,17 @@ export default function App() {
     send({ type: 'prompt', key, text });
   };
 
-  const onNewSession = (ws: IndexWorkspace, folder: IndexFolder) => {
+  const onNewSession = (ws: IndexWorkspace, folder: IndexFolder, title: string) => {
     const key = newKey();
-    pendingFile.current[key] = { folderId: folder.id, cwd: ws.cwd };
-    dispatch({ type: 'new_live', key, cwd: ws.cwd, folderId: folder.id, title: 'New session', resume: null });
-    send({ type: 'start', key, cwd: ws.cwd });
+    const cwd = folderCwd(ws, folder);
+    pendingFile.current[key] = { folderId: folder.id, cwd };
+    dispatch({ type: 'new_live', key, cwd, folderId: folder.id, title, resume: null });
+    send({ type: 'start', key, cwd, title });
   };
 
   const onOpenSession = async (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string) => {
     if (!api) return;
-    const cwd = folder?.sessions.find((s) => s.sessionId === sessionId)?.cwd ?? ws.cwd;
+    const cwd = folder?.sessions.find((s) => s.sessionId === sessionId)?.cwd ?? folderCwd(ws, folder);
     const existing = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
     if (existing) {
       dispatch({ type: 'activate', key: existing.key });
@@ -136,18 +155,37 @@ export default function App() {
 
   const banner = discoveryError ?? (socketState !== 'open' ? `sidecar ${socketState}, retrying` : appError);
 
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    const move = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      setPrefs({ railWidth: clampRail(ev.clientX) });
+    };
+    const stop = () => {
+      dragging.current = false;
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+  };
+
+  const style = { '--rail': `${prefs.railWidth}px`, '--prose-size': `${prefs.textSize}px` } as React.CSSProperties;
+
   return (
-    <div className="app">
+    <div className="app" style={style}>
       <Tree
         index={index}
         unfiled={unfiled}
         sessions={state.sessions}
         activeKey={state.activeKey}
         onCreateWorkspace={(name, cwd) => api?.createWorkspace(name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
-        onCreateFolder={(wid, name) => api?.createFolder(wid, name).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
+        onCreateFolder={(wid, name, cwd) => api?.createFolder(wid, name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
         onNewSession={onNewSession}
         onOpenSession={(ws, folder, id, title) => void onOpenSession(ws, folder, id, title)}
       />
+      <div className="splitter" onMouseDown={startDrag} title="drag to resize" />
       <main className="main">
         <div>
           {banner && (
@@ -164,13 +202,18 @@ export default function App() {
               )}
               <span>{active.cwd.replace(/^\/Users\/[^/]+/, '~')}</span>
               {active.transcript.model && <span>{active.transcript.model}</span>}
-              <label><input type="checkbox" checked={!hideThinking} onChange={(e) => setHideThinking(!e.target.checked)} /> thinking</label>
+              <label><input type="checkbox" checked={!hideThinking} onChange={(e) => setPrefs({ hideThinking: !e.target.checked })} /> thinking</label>
+              <label><input type="checkbox" checked={prefs.bionic} onChange={(e) => setPrefs({ bionic: e.target.checked })} /> bionic</label>
+              <span className="sizer">
+                <button className="mini" title="smaller text" onClick={() => setPrefs({ textSize: clampText(prefs.textSize - 1) })}>A-</button>
+                <button className="mini" title="larger text" onClick={() => setPrefs({ textSize: clampText(prefs.textSize + 1) })}>A+</button>
+              </span>
               <span className={`status ${active.error ? 'error' : active.status}`}>{statusText}</span>
             </div>
           )}
         </div>
         {active ? (
-          <Transcript transcript={active.transcript} hideThinking={hideThinking} />
+          <Transcript transcript={active.transcript} hideThinking={hideThinking} bionic={prefs.bionic} />
         ) : (
           <div className="transcript"><div className="empty">Pick a session on the left, or add a workspace.</div></div>
         )}

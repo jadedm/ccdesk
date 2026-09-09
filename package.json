@@ -17,5 +17,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.3"
   }
 }
