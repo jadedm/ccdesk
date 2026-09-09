@@ -1,3 +1,4 @@
+use std::fs::{create_dir_all, OpenOptions};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -15,6 +16,23 @@ pub struct SidecarInfo {
 struct Sidecar {
     child: Mutex<Option<Child>>,
     info: Mutex<Option<SidecarInfo>>,
+    failure: Mutex<Option<String>>,
+}
+
+/// A GUI app has no terminal, so the sidecar's stderr goes to a log file the user can open.
+fn sidecar_log(app: &tauri::AppHandle) -> Stdio {
+    let path = app
+        .path()
+        .app_log_dir()
+        .map(|dir| dir.join("sidecar.log"))
+        .unwrap_or_else(|_| PathBuf::from("/tmp/ccdesk-sidecar.log"));
+    let _ = path.parent().map(create_dir_all);
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map(Stdio::from)
+        .unwrap_or_else(|_| Stdio::inherit())
 }
 
 /// Locate node through the user's login shell. A GUI app launched from Finder carries
@@ -61,7 +79,7 @@ fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(Child, SidecarInfo), String>
         .arg(&script)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
+        .stderr(sidecar_log(app));
     if let Some(claude) = bundled_claude(app) {
         command.env("CCDESK_CLAUDE_BIN", claude);
     }
@@ -73,19 +91,21 @@ fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(Child, SidecarInfo), String>
     BufReader::new(stdout)
         .read_line(&mut first_line)
         .map_err(|e| format!("cannot read sidecar banner: {e}"))?;
-    let info: SidecarInfo = serde_json::from_str(first_line.trim())
-        .map_err(|e| format!("bad sidecar banner {first_line:?}: {e}"))?;
+    let info: SidecarInfo = serde_json::from_str(first_line.trim()).map_err(|e| {
+        let _ = child.kill();
+        format!("sidecar exited before announcing a port ({e}); see the sidecar log")
+    })?;
     Ok((child, info))
 }
 
 #[tauri::command]
 fn sidecar_info(state: State<Sidecar>) -> Result<SidecarInfo, String> {
-    state
-        .info
-        .lock()
-        .map_err(|_| "sidecar state poisoned".to_string())?
-        .clone()
-        .ok_or_else(|| "sidecar not running".to_string())
+    let info = state.info.lock().map_err(|_| "sidecar state poisoned".to_string())?.clone();
+    if let Some(info) = info {
+        return Ok(info);
+    }
+    let failure = state.failure.lock().ok().and_then(|f| f.clone());
+    Err(failure.unwrap_or_else(|| "sidecar not running".to_string()))
 }
 
 fn stop_sidecar(state: &Sidecar) {
@@ -100,7 +120,7 @@ fn stop_sidecar(state: &Sidecar) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(Sidecar { child: Mutex::new(None), info: Mutex::new(None) })
+        .manage(Sidecar { child: Mutex::new(None), info: Mutex::new(None), failure: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![sidecar_info])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -110,10 +130,19 @@ pub fn run() {
                         .build(),
                 )?;
             }
-            let (child, info) = spawn_sidecar(app.handle()).map_err(std::io::Error::other)?;
+            // A sidecar failure must not abort the app. The window opens and the UI shows
+            // the failure text from `sidecar_info`, which is what a user can act on.
             let state = app.state::<Sidecar>();
-            *state.child.lock().unwrap() = Some(child);
-            *state.info.lock().unwrap() = Some(info);
+            match spawn_sidecar(app.handle()) {
+                Ok((child, info)) => {
+                    *state.child.lock().unwrap() = Some(child);
+                    *state.info.lock().unwrap() = Some(info);
+                }
+                Err(message) => {
+                    log::error!("{message}");
+                    *state.failure.lock().unwrap() = Some(message);
+                }
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

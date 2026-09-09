@@ -13,6 +13,10 @@ await build({
   target: 'node22',
   format: 'cjs',
   outfile: 'dist/sidecar.cjs',
-  external: ['@anthropic-ai/claude-agent-sdk'],
-  define: { __SDK_VERSION__: JSON.stringify(sdk.version) },
+  // The SDK's JavaScript is bundled in. Its native `claude` binary is not, so the packaged
+  // app passes CCDESK_CLAUDE_BIN and the SDK never has to resolve the platform package.
+  external: ['@anthropic-ai/claude-agent-sdk-*'],
+  // The SDK calls createRequire(import.meta.url), which a CommonJS bundle does not have.
+  define: { __SDK_VERSION__: JSON.stringify(sdk.version), 'import.meta.url': '__importMetaUrl' },
+  banner: { js: "const __importMetaUrl = require('node:url').pathToFileURL(__filename).href;" },
 });

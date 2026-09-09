@@ -25,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": ["app"],
     "resources": {
       "../sidecar/dist/sidecar.cjs": "sidecar/sidecar.cjs",
       "resources/claude": "sidecar/claude"
