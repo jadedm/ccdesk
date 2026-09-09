@@ -70,12 +70,9 @@ describe('sidecar http', () => {
       ws.on('message', (raw) => {
         const m = JSON.parse(raw.toString()) as { type: string; message?: string; reason?: string };
         seen.push(`${m.type}:${m.message ?? m.reason ?? ''}`);
-        // The failure, its end, and the answer to the prompt queued behind it arrive in an
-        // order that depends on timing; wait for all three.
-        if (seen.includes('ended:error') && seen.some((x) => x.startsWith('error:no such live session'))) {
-          ws.close();
-          resolve(seen);
-        }
+        // Whether the start fails synchronously or on spawn decides if the queued prompt is
+        // answered, and in which order; settle shortly after the end event either way.
+        if (m.type === 'ended') setTimeout(() => { ws.close(); resolve(seen); }, 300);
       });
       ws.on('error', reject);
       setTimeout(() => reject(new Error(`incomplete, saw ${seen.join(' | ')}`)), 30_000);
