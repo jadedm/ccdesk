@@ -6,7 +6,10 @@ the Claude Agent SDK. Epic: #1.
 ## Layout
 
 - `sidecar/` Node. HTTP plus WebSocket on 127.0.0.1 with a bearer token. One `query()` per live
-  session. Reads the CLI's own session store via the SDK. Bundled by esbuild to `dist/sidecar.cjs`.
+  session. Lists, reads and renames sessions through the SDK; `session-meta.ts` additionally
+  opens the JSONL files under `~/.claude/projects/<slug>/` directly for message counts and the
+  model, resolving the directory's real path before slugging as the CLI does. Bundled by esbuild
+  to `dist/sidecar.cjs`.
 - `ui/` React with Vite. `src/transcript/reduce.ts` is the one reducer that turns history records
   and live SDK messages into the block model. Everything rendered goes through it.
 - `shared/protocol.ts` the wire types both sides import.

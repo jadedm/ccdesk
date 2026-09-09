@@ -102,7 +102,7 @@ export const reducer = (state: State, action: Action): State => {
     case 'local_prompt': {
       const session = state.sessions[action.key];
       if (!session) return state;
-      const record = { type: 'user', message: { role: 'user', content: action.text } };
+      const record = { type: 'user', message: { role: 'user', content: action.text }, timestamp: new Date().toISOString() };
       const next = { ...session, status: 'running' as const, error: null, transcript: reduceRecord(session.transcript, record) };
       return { ...state, sessions: { ...state.sessions, [action.key]: next } };
     }

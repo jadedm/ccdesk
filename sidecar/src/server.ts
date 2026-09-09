@@ -6,6 +6,7 @@ import type { ClientMessage, PermissionMode, ServerMessage, SidecarInfo } from '
 import { HttpError, badRequest, notFound } from './errors.ts';
 import { IndexStore } from './index-store.ts';
 import { SessionManager } from './sessions.ts';
+import { SessionMetaCache, sessionFile } from './session-meta.ts';
 
 export type ServerConfig = { indexPath: string; sdkVersion: string; claudeBinary?: string; port?: number; token?: string };
 
@@ -73,6 +74,7 @@ export type RunningServer = SidecarInfo & { close: () => Promise<void> };
 
 export const startServer = async (config: ServerConfig): Promise<RunningServer> => {
   const token = config.token ?? randomBytes(24).toString('hex');
+  const meta = new SessionMetaCache();
   const store = new IndexStore(config.indexPath);
   const warning = await store.load();
   if (warning) process.stderr.write(`${warning}\n`);
@@ -83,7 +85,13 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     route('POST', '/workspaces', async (_req, _p, body) => store.createWorkspace(body.name, body.cwd)),
     route('POST', '/workspaces/:wid/folders', async (_req, p, body) => store.createFolder(p.wid, body.name, body.cwd)),
     route('POST', '/folders/:fid/sessions', async (_req, p, body) => store.fileSession(p.fid, body.sessionId, body.cwd)),
-    route('GET', '/sessions', async (_req, _p, _b, url) => listSessions({ dir: requireCwd(url.searchParams.get('cwd')) })),
+    route('GET', '/sessions', async (_req, _p, _b, url) => {
+      const cwd = requireCwd(url.searchParams.get('cwd'));
+      const list = await listSessions({ dir: cwd });
+      // A session listed for this directory may live in another worktree's store; its own
+      // cwd names that store.
+      return Promise.all(list.map(async (s) => ({ ...s, ...(await meta.read(sessionFile(s.cwd ?? cwd, s.sessionId))) })));
+    }),
     route('GET', '/sessions/:id/messages', async (_req, p, _b, url) =>
       getSessionMessages(p.id, { dir: requireCwd(url.searchParams.get('cwd')) }),
     ),

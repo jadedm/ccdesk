@@ -22,6 +22,12 @@ declare const __SDK_VERSION__: string | undefined;
 const sdkVersion = (): string => (typeof __SDK_VERSION__ === 'string' ? __SDK_VERSION__ : 'unknown');
 
 const main = async (): Promise<void> => {
+  // The shell closes our stdin to say quit. Listen before anything else so a parent that
+  // dies while we are still starting up never leaves an orphan behind.
+  let shutdown: () => void = () => process.exit(0);
+  process.stdin.on('end', () => shutdown());
+  process.stdin.resume();
+
   const server = await startServer({
     indexPath: process.env.CCDESK_INDEX ?? join(homedir(), '.ccdesk', 'index.json'),
     sdkVersion: sdkVersion(),
@@ -32,14 +38,12 @@ const main = async (): Promise<void> => {
   process.stdout.write(JSON.stringify({ port: server.port, token: server.token }) + '\n');
   // Exit within a bounded time whatever the SDK children are doing; the shell only waits
   // three seconds before killing the process anyway.
-  const shutdown = (): void => {
+  shutdown = (): void => {
     setTimeout(() => process.exit(0), 2_500).unref();
     void server.close().finally(() => process.exit(0));
   };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-  process.stdin.on('end', shutdown);
-  process.stdin.resume();
+  process.on('SIGTERM', () => shutdown());
+  process.on('SIGINT', () => shutdown());
 };
 
 // The sidecar hosts every live session, so one failure inside the SDK (a spawn error

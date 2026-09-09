@@ -1,9 +1,16 @@
 import { memo, useEffect, useRef, type ReactNode } from 'react';
 import Markdown, { type Components } from 'react-markdown';
-import { bionicNodes } from '../transcript/bionic.ts';
 import remarkGfm from 'remark-gfm';
+import { bionicNodes } from '../transcript/bionic.ts';
 import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.ts';
 import { toolDisplayName } from '../transcript/summaries.ts';
+import { keepAtBottom, visible, type View } from '../transcript/view.ts';
+
+const clock = (iso?: string): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
 
 const ToolLine = ({ block }: { block: Extract<Block, { kind: 'tool' }> }) => {
   const count = block.result
@@ -41,7 +48,6 @@ const formatInput = (input: Record<string, unknown>): string => {
   return keys.map((k) => `${k}: ${typeof input[k] === 'string' ? input[k] : JSON.stringify(input[k], null, 2)}`).join('\n');
 };
 
-// Memoised: blocks are copied only when they change, so unchanged blocks skip the markdown parse.
 // Bionic mode rewrites plain text inside paragraphs and list items; code, links and
 // emphasis keep their own rendering.
 const bionify = (children: ReactNode): ReactNode => {
@@ -56,10 +62,23 @@ const bionicComponents: Components = {
   td: ({ children, node: _node, ...rest }) => <td {...rest}>{bionify(children)}</td>,
 };
 
+/** Small mono line above a block: who, and when. */
+const Role = ({ who, at }: { who: string; at?: string }) => (
+  <div className="role">
+    <span className="who">{who}</span>
+    {at && <span className="time">{clock(at)}</span>}
+  </div>
+);
+
 const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) => {
   switch (block.kind) {
     case 'user':
-      return <div className="user">{block.text}</div>;
+      return (
+        <>
+          <Role who="you" at={block.at} />
+          <div className="user">{block.text}</div>
+        </>
+      );
     case 'text':
       return (
         <div className={block.streaming ? 'prose streaming' : 'prose'}>
@@ -75,35 +94,85 @@ const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) =>
       );
     case 'tool':
       return <ToolLine block={block} />;
+    case 'system':
+      return (
+        <details className="system">
+          <summary>
+            <span className="tag">{block.tag}</span>
+            <span className="hint">{block.text.length} chars</span>
+          </summary>
+          <pre>{block.text}</pre>
+        </details>
+      );
     case 'note':
       return <div className={block.tone === 'error' ? 'note error' : 'note'}>{block.text}</div>;
   }
 });
 
-export { BlockView };
+export { BlockView, Role };
 
-export const Transcript = ({ transcript, hideThinking, bionic }: { transcript: TranscriptModel; hideThinking: boolean; bionic: boolean }) => {
-  const bottom = useRef<HTMLDivElement>(null);
+const isReply = (b: Block): boolean => b.kind === 'text' || b.kind === 'thinking' || b.kind === 'tool';
+
+type TranscriptProps = {
+  transcript: TranscriptModel;
+  view: View;
+  /** Identifies the session shown; a change resets the scroll position to the top. */
+  sessionKey: string;
+  /** True while a turn is running, the only time the view follows the end. */
+  following: boolean;
+};
+
+export const Transcript = ({ transcript, view, sessionKey, following }: TranscriptProps) => {
+  const scroller = useRef<HTMLDivElement>(null);
+  const distance = useRef(0);
   const lastTurn = transcript.turns[transcript.turns.length - 1];
   const lastBlock = lastTurn?.blocks[lastTurn.blocks.length - 1];
   const tail = lastBlock && 'text' in lastBlock ? lastBlock.text.length : 0;
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (el) distance.current = el.scrollHeight - el.scrollTop - el.clientHeight;
+  };
+
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'end' });
-  }, [transcript.turns.length, tail]);
+    const el = scroller.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    distance.current = el.scrollHeight - el.clientHeight;
+  }, [sessionKey]);
+
+  // A prompt the reader just sent always brings the reply into view; streaming after that
+  // follows only while they stay near the bottom.
+  const justPrompted = lastBlock?.kind === 'user';
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    if (!(following && justPrompted) && !keepAtBottom(following, distance.current)) return;
+    el.scrollTop = el.scrollHeight;
+    distance.current = 0;
+  }, [transcript.turns.length, tail, following, justPrompted]);
 
   if (transcript.turns.length === 0) return <div className="transcript"><div className="empty">No messages yet.</div></div>;
   return (
-    <div className={hideThinking ? 'transcript hide-thinking' : 'transcript'}>
+    <div className="transcript" ref={scroller} onScroll={onScroll}>
       <div className="reading">
-        {transcript.turns.map((turn, i) => (
-          <section className="turn" key={turn.id} id={turn.id}>
-            <div className="turn-index">{i + 1}</div>
-            {turn.blocks.map((block) => (
-              <BlockView block={block} bionic={bionic} key={block.id} />
-            ))}
-          </section>
-        ))}
-        <div ref={bottom} />
+        {transcript.turns.map((turn, i) => {
+          const shown = turn.blocks.filter((b) => visible(b, view));
+          // The claude label goes before the first reply block that is actually visible, so a
+          // hidden thinking block never swallows it.
+          const labelBefore = turn.replyAt ? shown.find(isReply)?.id : undefined;
+          return (
+            <section className="turn" key={turn.id} id={turn.id}>
+              <div className="turn-index">{i + 1}</div>
+              {shown.map((block) => (
+                <span key={block.id} style={{ display: 'contents' }}>
+                  {block.id === labelBefore && <Role who="claude" at={turn.replyAt} />}
+                  <BlockView block={block} bionic={view.bionic} />
+                </span>
+              ))}
+            </section>
+          );
+        })}
       </div>
     </div>
   );

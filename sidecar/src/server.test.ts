@@ -70,16 +70,15 @@ describe('sidecar http', () => {
       ws.on('message', (raw) => {
         const m = JSON.parse(raw.toString()) as { type: string; message?: string; reason?: string };
         seen.push(`${m.type}:${m.message ?? m.reason ?? ''}`);
-        if (m.type === 'ended') {
-          ws.close();
-          resolve(seen);
-        }
+        // Whether the start fails synchronously or on spawn decides if the queued prompt is
+        // answered, and in which order; settle shortly after the end event either way.
+        if (m.type === 'ended') setTimeout(() => { ws.close(); resolve(seen); }, 300);
       });
       ws.on('error', reject);
-      setTimeout(() => reject(new Error(`no ended event, saw ${seen.join(' | ')}`)), 30_000);
+      setTimeout(() => reject(new Error(`incomplete, saw ${seen.join(' | ')}`)), 30_000);
     });
-    expect(messages.some((m) => m.startsWith('error:'))).toBe(true);
-    expect(messages[messages.length - 1]).toBe('ended:error');
+    expect(messages.some((m) => m.startsWith('error:') && !m.includes('no such live session'))).toBe(true);
+    expect(messages).toContain('ended:error');
     const health = await fetch(`http://127.0.0.1:${broken.port}/health`, { headers: { authorization: `Bearer ${broken.token}` } });
     expect(health.status).toBe(200);
     await broken.close();

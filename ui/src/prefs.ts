@@ -1,9 +1,19 @@
 // Per-machine reading preferences. localStorage can be missing or throw (private windows,
 // blocked storage), so every access is guarded and the defaults always apply.
 
-export type Prefs = { railWidth: number; textSize: number; bionic: boolean; hideThinking: boolean };
+export type Theme = 'light' | 'dark';
 
-export const defaults: Prefs = { railWidth: 280, textSize: 17, bionic: false, hideThinking: true };
+export type Prefs = {
+  railWidth: number;
+  textSize: number;
+  bionic: boolean;
+  hideThinking: boolean;
+  showTools: boolean;
+  showSystem: boolean;
+  theme: Theme;
+};
+
+export const defaults: Prefs = { railWidth: 280, textSize: 16.5, bionic: false, hideThinking: true, showTools: true, showSystem: false, theme: 'light' };
 
 export const railBounds = { min: 200, max: 600 };
 export const textBounds = { min: 13, max: 26 };
@@ -23,6 +33,9 @@ export const loadPrefs = (): Prefs => {
       textSize: clamp(numberOr(parsed.textSize, defaults.textSize), textBounds.min, textBounds.max),
       bionic: Boolean(parsed.bionic ?? defaults.bionic),
       hideThinking: Boolean(parsed.hideThinking ?? defaults.hideThinking),
+      showTools: Boolean(parsed.showTools ?? defaults.showTools),
+      showSystem: Boolean(parsed.showSystem ?? defaults.showSystem),
+      theme: parsed.theme === 'dark' ? 'dark' : 'light',
     };
   } catch {
     return defaults;

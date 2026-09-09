@@ -43,6 +43,9 @@ export type SessionSummary = {
   cwd?: string;
   gitBranch?: string;
   createdAt?: number;
+  /** From the sidecar's own scan of the transcript. */
+  messages?: number;
+  model?: string | null;
 };
 
 export type SidecarInfo = { port: number; token: string };
