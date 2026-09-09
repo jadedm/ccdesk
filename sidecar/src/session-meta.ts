@@ -26,7 +26,7 @@ const resolved = (cwd: string): string => {
 export const sessionFile = (cwd: string, sessionId: string, home = homedir()): string =>
   join(home, '.claude', 'projects', projectSlug(resolved(cwd)), `${sessionId}.jsonl`);
 
-type Entry = { mtimeMs: number; consumed: number; meta: SessionMeta };
+type Entry = { mtimeMs: number; size: number; consumed: number; meta: SessionMeta };
 
 const countLine = (line: string, meta: SessionMeta): void => {
   let record: { type?: string; isMeta?: boolean; message?: { model?: string } };
@@ -77,14 +77,15 @@ export class SessionMetaCache {
     try {
       const info = await stat(file);
       const cached = this.cache.get(file);
-      if (cached && cached.mtimeMs === info.mtimeMs) return cached.meta;
+      // Two writes inside one mtime tick leave the mtime unchanged, so the size is part of the key.
+      if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached.meta;
       // Resume where the last pass stopped when the file only grew; start over otherwise.
       const resume = cached && info.size >= cached.consumed ? cached : null;
       const meta: SessionMeta = resume ? { ...resume.meta } : { messages: 0, model: null };
       const start = resume ? resume.consumed : 0;
       const consumed = await scanFrom(file, start, meta);
       this.bytesRead += consumed - start;
-      this.cache.set(file, { mtimeMs: info.mtimeMs, consumed, meta });
+      this.cache.set(file, { mtimeMs: info.mtimeMs, size: info.size, consumed, meta });
       return meta;
     } catch {
       return null;

@@ -24,17 +24,18 @@
 .app.bionic { --mono: "Fast_Mono", "JetBrains Mono Variable", ui-monospace, Menlo, monospace; }
 
 * { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+/* The window never scrolls; the rail and the transcript scroll inside their own columns. */
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
 body { font: 400 var(--prose-size)/1.72 var(--serif); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 button { font: inherit; }
 a { color: var(--accent); }
 
-.app { display: grid; grid-template-columns: var(--rail) 6px 1fr; height: 100%; }
+.app { display: grid; grid-template-columns: var(--rail) 6px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; }
 .splitter { cursor: col-resize; background: transparent; border-left: 1px solid var(--border); }
 .splitter:hover { background: var(--surface2); }
 
 /* Left rail */
-.rail { background: var(--surface); overflow-y: auto; padding: 14px 10px; font: 400 12.5px/1.4 var(--mono); }
+.rail { background: var(--surface); overflow-y: auto; min-height: 0; padding: 14px 10px; font: 400 12.5px/1.4 var(--mono); }
 .rail h1 { font: 500 18px/1 var(--display); color: var(--ink); margin: 4px 6px 14px; }
 .rail .workspace { margin-bottom: 14px; }
 .rail .workspace > .row { font-weight: 500; color: var(--ink2); }
@@ -63,8 +64,9 @@ a { color: var(--accent); }
 .rail .cwd { font: 400 10.5px var(--mono); color: var(--faint); margin: -3px 8px 6px; overflow: hidden; text-overflow: ellipsis; letter-spacing: .02em; }
 
 /* Main */
-.main { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; height: 100%; }
-.topbar { display: flex; align-items: baseline; gap: 14px; padding: 14px 28px 12px; border-bottom: 1px solid var(--border); font: 400 11px var(--mono); color: var(--muted); }
+.main { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; height: 100%; }
+.topbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; padding: 14px 28px 12px; border-bottom: 1px solid var(--border); font: 400 11px var(--mono); color: var(--muted); }
+.topbar > span:not(.toggles):not(.sizer):not(.status) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .topbar .title { font: 500 19px/1.25 var(--display); color: var(--ink); }
 .topbar .status { margin-left: auto; }
 .topbar .status.running { color: var(--ok); }
@@ -76,7 +78,7 @@ a { color: var(--accent); }
 .topbar .sizer .mini { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; font: 400 11px var(--mono); }
 .topbar .sizer .mini:hover { color: var(--accent); }
 
-.transcript { overflow-y: auto; padding: 40px 0 120px; scroll-behavior: smooth; }
+.transcript { overflow-y: auto; min-height: 0; padding: 40px 0 120px; }
 .reading { max-width: 44rem; margin: 0 auto; padding: 0 32px; }
 .empty { color: var(--faint); text-align: center; margin-top: 30vh; font: 400 15px var(--serif); }
 
@@ -146,11 +148,14 @@ details.system pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--
 .note.error { color: var(--error); }
 
 /* Composer and permission bar */
-.bottom { border-top: 1px solid var(--border); background: var(--bg); }
+/* The window cannot scroll, so the bottom region scrolls inside itself if a permission card
+   and a tall composer would otherwise push the controls out of reach. */
+.bottom { border-top: 1px solid var(--border); background: var(--bg); max-height: 60vh; overflow-y: auto; }
 .permission { max-width: 44rem; margin: 0 auto; padding: 12px 32px 0; }
 .permission .card { border: 1px solid var(--border2); background: var(--surface); border-radius: 10px; padding: 12px 16px; font-size: 14px; }
 .permission .card .t { font-weight: 600; margin-bottom: 4px; }
 .permission .card .d { color: var(--ink2); margin-bottom: 6px; }
+.permission .card .d { max-height: 20vh; overflow: auto; }
 .permission .card pre { font: 400 11.5px/1.5 var(--mono); margin: 6px 0; white-space: pre-wrap; max-height: 200px; overflow: auto; color: var(--ink2); }
 .permission .actions { display: flex; gap: 8px; margin-top: 8px; }
 .composer { max-width: 44rem; margin: 0 auto; padding: 12px 32px 16px; display: flex; gap: 10px; align-items: flex-end; }
