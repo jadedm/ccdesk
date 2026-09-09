@@ -20,13 +20,26 @@ struct Sidecar {
     failure: Mutex<Option<String>>,
 }
 
-/// A GUI app has no terminal, so the sidecar's stderr goes to a log file the user can open.
-fn sidecar_log(app: &tauri::AppHandle) -> Stdio {
-    let path = app
-        .path()
+/// A GUI app has no terminal, so the sidecar's stderr and any spawn failure go to a log
+/// file the user can open.
+fn sidecar_log_path(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
         .app_log_dir()
         .map(|dir| dir.join("sidecar.log"))
-        .unwrap_or_else(|_| PathBuf::from("/tmp/ccdesk-sidecar.log"));
+        .unwrap_or_else(|_| PathBuf::from("/tmp/ccdesk-sidecar.log"))
+}
+
+fn sidecar_log_file(app: &tauri::AppHandle) -> Box<dyn std::io::Write> {
+    let path = sidecar_log_path(app);
+    let _ = path.parent().map(create_dir_all);
+    match OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => Box::new(file),
+        Err(_) => Box::new(std::io::stderr()),
+    }
+}
+
+fn sidecar_log(app: &tauri::AppHandle) -> Stdio {
+    let path = sidecar_log_path(app);
     let _ = path.parent().map(create_dir_all);
     OpenOptions::new()
         .create(true)
@@ -46,15 +59,21 @@ struct ShellEnv {
 }
 
 fn login_shell_env() -> ShellEnv {
+    // Interactive as well as login (-lic): version managers such as fnm and nvm put node
+    // on PATH from .zshrc, which a plain login shell never reads. stdin is /dev/null so an
+    // interactive shell cannot wait on the terminal it does not have.
     let output = Command::new("/bin/zsh")
-        .args(["-lc", "printf '%s\n%s\n' \"$(command -v node)\" \"$PATH\""])
+        .args(["-lic", "printf '\n%s\n%s\n' \"$(command -v node)\" \"$PATH\""])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
         .output()
         .ok()
         .and_then(|out| String::from_utf8(out.stdout).ok())
         .unwrap_or_default();
-    let mut lines = output.lines().map(str::trim);
-    let node = lines.next().filter(|s| !s.is_empty()).map(str::to_string);
-    let path = lines.next().filter(|s| !s.is_empty()).map(str::to_string);
+    // Take the last two lines: rc files may print before the printf runs.
+    let lines: Vec<&str> = output.lines().map(str::trim).collect();
+    let node = lines.get(lines.len().wrapping_sub(2)).filter(|s| !s.is_empty()).map(|s| s.to_string());
+    let path = lines.last().filter(|s| !s.is_empty()).map(|s| s.to_string());
     ShellEnv {
         node: std::env::var("CCDESK_NODE").ok().or(node).unwrap_or_else(|| "node".to_string()),
         path,
@@ -178,6 +197,7 @@ pub fn run() {
                 }
                 Err(message) => {
                     log::error!("{message}");
+                    let _ = std::io::Write::write_all(&mut sidecar_log_file(app.handle()), format!("{message}\n").as_bytes());
                     *state.failure.lock().unwrap() = Some(message);
                 }
             }
