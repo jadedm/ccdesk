@@ -156,14 +156,13 @@ export const Transcript = ({ transcript, view, sessionKey, following }: Transcri
   return (
     <div className="transcript" ref={scroller} onScroll={onScroll}>
       <div className="reading">
-        {transcript.turns.map((turn, i) => {
+        {transcript.turns.map((turn) => {
           const shown = turn.blocks.filter((b) => visible(b, view));
           // The claude label goes before the first reply block that is actually visible, so a
           // hidden thinking block never swallows it.
           const labelBefore = turn.replyAt ? shown.find(isReply)?.id : undefined;
           return (
             <section className="turn" key={turn.id} id={turn.id}>
-              <div className="turn-index">{i + 1}</div>
               {shown.map((block) => (
                 <span key={block.id} style={{ display: 'contents' }}>
                   {block.id === labelBefore && <Role who="claude" at={turn.replyAt} />}

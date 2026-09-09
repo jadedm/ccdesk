@@ -52,6 +52,15 @@ describe('follow rule', () => {
   });
 });
 
+describe('turn chrome', () => {
+  it('renders turns without a number, the role label marks the start', () => {
+    const t = { turns: [{ id: 'a', blocks: [{ kind: 'user' as const, id: 'u1', text: 'one', at: '2026-09-09T10:00:00Z' }] }, { id: 'b', blocks: [{ kind: 'user' as const, id: 'u2', text: 'two' }] }] };
+    const html = renderToStaticMarkup(<Transcript transcript={t} view={all} sessionKey="k" following={false} />);
+    expect(html).not.toContain('turn-index');
+    expect(html.match(/class="who">you</g)?.length).toBe(2);
+  });
+});
+
 describe('view toggles', () => {
   const blocks: Block[] = [
     { kind: 'user', id: 'u', text: 'go' },
