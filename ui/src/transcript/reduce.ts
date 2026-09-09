@@ -21,6 +21,7 @@ type Record_ = {
   type: string;
   subtype?: string;
   uuid?: string;
+  timestamp?: string;
   isMeta?: boolean;
   parent_tool_use_id?: string | null;
   message?: { role?: string; content?: string | ContentBlock[]; model?: string };
@@ -87,24 +88,43 @@ const findOpen = (t: Transcript, kind: StreamingKind) => {
   return null;
 };
 
-// User text. Local-command wrappers and reminders are the CLI's bookkeeping, not conversation.
-const skippedUserPrefixes = ['<system-reminder>', '<local-command-caveat>', '<local-command-stdout>', '<task-notification>'];
+// Harness-injected user turns are machinery the CLI put in the conversation, not something
+// the user typed. They become folded system blocks tagged with their kind, so the reader
+// can open them when the question is "what did the harness tell Claude here".
+const systemTag = /^<(system-reminder|task-notification|local-command-caveat|local-command-stdout|local-command-stderr|command-message|command-args|command-contents|command-stdout|command-stderr|user-prompt-submit-hook|bash-stdout|bash-stderr)\b/;
 
-const userTextToBlock = (text: string): Block | null => {
+const stripTags = (text: string): string => text.replace(/<\/?[a-z-]+>/g, '').trim();
+
+const userTextToBlock = (text: string, at?: string): Block | null => {
   const trimmed = text.trim();
-  if (trimmed === '' || skippedUserPrefixes.some((p) => trimmed.startsWith(p))) return null;
+  if (trimmed === '') return null;
   const command = trimmed.match(/^<command-name>([^<]+)<\/command-name>/);
   if (command) return { kind: 'note', id: nextId('note'), text: `ran ${command[1]}`, tone: 'info' };
   const bash = trimmed.match(/^<bash-input>([\s\S]*?)<\/bash-input>/);
-  if (bash) return { kind: 'user', id: nextId('user'), text: `! ${bash[1].trim()}` };
+  if (bash) return { kind: 'user', id: nextId('user'), text: `! ${bash[1].trim()}`, at };
+  const system = trimmed.match(systemTag);
+  if (system) return { kind: 'system', id: nextId('system'), tag: system[1], text: stripTags(trimmed) };
   if (trimmed.startsWith('[Request interrupted')) return { kind: 'note', id: nextId('note'), text: 'interrupted by user', tone: 'info' };
-  return { kind: 'user', id: nextId('user'), text: trimmed };
+  return { kind: 'user', id: nextId('user'), text: trimmed, at };
 };
 
 const placeUserBlock = (t: Transcript, block: Block | null): void => {
   if (!block) return;
   if (block.kind === 'user') newTurn(t, block);
   else append(t, block);
+};
+
+/** The first assistant block of a turn carries the reply's timestamp for the role label. */
+const stampReply = (t: Transcript, at: string | undefined): void => {
+  if (!at) return;
+  const turn = currentTurn(t);
+  const replyStarted = turn.blocks.some((b) => b.kind !== 'user' && b.kind !== 'system' && 'at' in b && b.at);
+  if (replyStarted) return;
+  const first = turn.blocks.findIndex((b) => b.kind === 'text' || b.kind === 'thinking' || b.kind === 'tool');
+  if (first === -1) return;
+  const block = turn.blocks[first];
+  if (block.kind === 'text') patch(turn, first, { at });
+  if (block.kind === 'tool' || block.kind === 'thinking') turn.blocks[first] = { ...block, at } as Block;
 };
 
 const resultText = (content: ToolResultBlock): string => {
@@ -129,7 +149,7 @@ const userParts: Record<string, PartHandler> = {
   tool_result: (t, part) => applyToolResult(t, part as ToolResultBlock),
   text: (t, part, record) => {
     if (record.isMeta) return;
-    placeUserBlock(t, userTextToBlock((part as TextPart).text));
+    placeUserBlock(t, userTextToBlock((part as TextPart).text, record.timestamp));
   },
   image: (t) => append(t, { kind: 'note', id: nextId('note'), text: 'attached image', tone: 'info' }),
   document: (t) => append(t, { kind: 'note', id: nextId('note'), text: 'attached document', tone: 'info' }),
@@ -138,7 +158,7 @@ const userParts: Record<string, PartHandler> = {
 const applyUser = (t: Transcript, record: Record_): void => {
   const content = record.message?.content;
   if (typeof content === 'string') {
-    if (!record.isMeta) placeUserBlock(t, userTextToBlock(content));
+    if (!record.isMeta) placeUserBlock(t, userTextToBlock(content, record.timestamp));
     return;
   }
   if (!Array.isArray(content)) return;
@@ -175,6 +195,7 @@ const applyAssistant = (t: Transcript, record: Record_): void => {
   const content = record.message?.content;
   if (record.message?.model && !t.model) t.model = record.message.model;
   if (Array.isArray(content)) for (const part of content) assistantParts[part.type]?.(t, part, record);
+  stampReply(t, record.timestamp);
   if (record.error) append(t, { kind: 'note', id: nextId('note'), text: `api error: ${record.error}`, tone: 'error' });
 };
 
@@ -202,7 +223,11 @@ const streamDeltas: Record<string, (t: Transcript, delta: { text?: string; think
 const applyStream = (t: Transcript, record: Record_): void => {
   const event = record.event;
   if (!event) return;
-  if (event.type === 'content_block_start' && 'content_block' in event) streamStarts[event.content_block.type]?.(t, event.content_block);
+  if (event.type === 'content_block_start' && 'content_block' in event) {
+    streamStarts[event.content_block.type]?.(t, event.content_block);
+    // A live reply has no record timestamp; the moment it started is the label.
+    stampReply(t, record.timestamp ?? new Date().toISOString());
+  }
   if (event.type === 'content_block_delta' && 'delta' in event) streamDeltas[event.delta.type]?.(t, event.delta);
 };
 

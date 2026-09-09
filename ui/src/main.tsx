@@ -1,5 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/newsreader';
+import '@fontsource-variable/newsreader/wght-italic.css';
+import '@fontsource-variable/fraunces';
+import '@fontsource-variable/jetbrains-mono';
 import './index.css';
 import App from './App.tsx';
 

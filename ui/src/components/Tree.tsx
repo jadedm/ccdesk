@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { IndexFolder, IndexWorkspace, WorkspaceIndex } from '../../../shared/protocol.ts';
 import type { ListedSession } from '../cwd.ts';
+import { metaLine, type RowMeta } from '../meta.ts';
 import { hasNativeDialog, pickDirectory } from '../pick.ts';
 import type { SessionView } from '../state.ts';
 
@@ -68,15 +69,19 @@ const NameForm = ({ placeholder, onSubmit, onCancel, directory, defaultDirectory
 const liveFor = (sessions: Record<string, SessionView>, sessionId: string): SessionView | undefined =>
   Object.values(sessions).find((s) => s.sessionId === sessionId && s.status !== 'history');
 
-const SessionRow = ({ id, title, sessions, activeKey, onOpen }: { id: string; title: string; sessions: Record<string, SessionView>; activeKey: string | null; onOpen: () => void }) => {
+const SessionRow = ({ id, title, meta, sessions, activeKey, onOpen }: { id: string; title: string; meta: RowMeta; sessions: Record<string, SessionView>; activeKey: string | null; onOpen: () => void }) => {
   const live = liveFor(sessions, id);
   const viewing = Object.values(sessions).find((s) => s.sessionId === id);
   const active = viewing !== undefined && viewing.key === activeKey;
   const dotClass = live ? `dot ${live.status}` : 'dot';
+  const line = live ? (live.status === 'running' ? 'working' : live.status) : metaLine(meta);
   return (
     <div className={`row session selectable${active ? ' active' : ''}`} onClick={onOpen} title={id}>
       <span className={dotClass} />
-      <span className="label">{title}</span>
+      <span className="label">
+        <span className="st">{title}</span>
+        {line && <span className="sm">{line}</span>}
+      </span>
     </div>
   );
 };
@@ -89,6 +94,7 @@ export const Tree = (p: TreeProps) => {
     const live = Object.values(p.sessions).find((s) => s.sessionId === id);
     return live?.title || known?.customTitle || known?.summary || known?.firstPrompt || id.slice(0, 8);
   };
+  const metaOf = (id: string, ws: IndexWorkspace): RowMeta => p.unfiled[ws.id]?.find((s) => s.sessionId === id) ?? {};
   const unfiledOf = (ws: IndexWorkspace): ListedSession[] => (p.unfiled[ws.id] ?? []).filter((s) => !filedIds.has(s.sessionId));
   return (
     <aside className="rail">
@@ -116,7 +122,7 @@ export const Tree = (p: TreeProps) => {
                 <NameForm placeholder="session name (blank lets the CLI title it)" nameOptional onCancel={() => setAdding(null)} onSubmit={(name) => { p.onNewSession(ws, folder, name); setAdding(null); }} />
               )}
               {folder.sessions.map((s) => (
-                <SessionRow key={s.sessionId} id={s.sessionId} title={titleOf(s.sessionId, ws)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, folder, s.sessionId, titleOf(s.sessionId, ws))} />
+                <SessionRow key={s.sessionId} id={s.sessionId} title={titleOf(s.sessionId, ws)} meta={metaOf(s.sessionId, ws)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, folder, s.sessionId, titleOf(s.sessionId, ws))} />
               ))}
               {folder.sessions.length === 0 && adding !== `session:${folder.id}` && <div className="row session muted">empty</div>}
             </div>
@@ -125,7 +131,7 @@ export const Tree = (p: TreeProps) => {
             <div className="folder">
               <div className="row"><span className="label muted">Unfiled</span></div>
               {unfiled.map((s) => (
-                <SessionRow key={s.sessionId} id={s.sessionId} title={s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, null, s.sessionId, s.customTitle || s.summary || s.sessionId.slice(0, 8), s.listedIn)} />
+                <SessionRow key={s.sessionId} id={s.sessionId} title={s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8)} meta={s} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, null, s.sessionId, s.customTitle || s.summary || s.sessionId.slice(0, 8), s.listedIn)} />
               ))}
             </div>
           )}

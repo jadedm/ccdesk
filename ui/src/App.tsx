@@ -3,6 +3,7 @@ import type { IndexFolder, IndexWorkspace, SessionSummary, WorkspaceIndex } from
 import { Api, Socket, discoverSidecar, type SocketState } from './api.ts';
 import { Composer } from './components/Composer.tsx';
 import { Transcript } from './components/Transcript.tsx';
+import type { View } from './transcript/view.ts';
 import { Tree } from './components/Tree.tsx';
 import { folderCwd, mergeListings, workspaceDirs, type ListedSession } from './cwd.ts';
 import { clampRail, clampText, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
@@ -32,7 +33,10 @@ export default function App() {
   const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
   const setPrefs = (change: Partial<Prefs>) => setPrefsState((current) => ({ ...current, ...change }));
   useEffect(() => savePrefs(prefs), [prefs]);
-  const hideThinking = prefs.hideThinking;
+  useEffect(() => {
+    document.documentElement.dataset.theme = prefs.theme;
+  }, [prefs.theme]);
+  const view: View = { hideThinking: prefs.hideThinking, showTools: prefs.showTools, showSystem: prefs.showSystem, bionic: prefs.bionic };
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const socket = useRef<Socket | null>(null);
@@ -171,7 +175,7 @@ export default function App() {
   const style = { '--rail': `${prefs.railWidth}px`, '--prose-size': `${prefs.textSize}px` } as React.CSSProperties;
 
   return (
-    <div className="app" style={style}>
+    <div className={prefs.bionic ? 'app bionic' : 'app'} style={style}>
       <Tree
         index={index}
         unfiled={unfiled}
@@ -199,18 +203,23 @@ export default function App() {
               )}
               <span>{active.cwd.replace(/^\/Users\/[^/]+/, '~')}</span>
               {active.transcript.model && <span>{active.transcript.model}</span>}
-              <label><input type="checkbox" checked={!hideThinking} onChange={(e) => setPrefs({ hideThinking: !e.target.checked })} /> thinking</label>
-              <label><input type="checkbox" checked={prefs.bionic} onChange={(e) => setPrefs({ bionic: e.target.checked })} /> bionic</label>
+              <span className="toggles">
+                <label><input type="checkbox" checked={!prefs.hideThinking} onChange={(e) => setPrefs({ hideThinking: !e.target.checked })} /> thinking</label>
+                <label><input type="checkbox" checked={prefs.showTools} onChange={(e) => setPrefs({ showTools: e.target.checked })} /> tools</label>
+                <label><input type="checkbox" checked={prefs.showSystem} onChange={(e) => setPrefs({ showSystem: e.target.checked })} /> system</label>
+                <label><input type="checkbox" checked={prefs.bionic} onChange={(e) => setPrefs({ bionic: e.target.checked })} /> bionic</label>
+              </span>
               <span className="sizer">
                 <button className="mini" title="smaller text" onClick={() => setPrefs({ textSize: clampText(prefs.textSize - 1) })}>A-</button>
                 <button className="mini" title="larger text" onClick={() => setPrefs({ textSize: clampText(prefs.textSize + 1) })}>A+</button>
+                <button className="mini" title="switch theme" onClick={() => setPrefs({ theme: prefs.theme === 'dark' ? 'light' : 'dark' })}>{prefs.theme === 'dark' ? 'light' : 'dark'}</button>
               </span>
               <span className={`status ${active.error ? 'error' : active.status}`}>{statusText}</span>
             </div>
           )}
         </div>
         {active ? (
-          <Transcript transcript={active.transcript} hideThinking={hideThinking} bionic={prefs.bionic} />
+          <Transcript transcript={active.transcript} view={view} />
         ) : (
           <div className="transcript"><div className="empty">Pick a session on the left, or add a workspace.</div></div>
         )}

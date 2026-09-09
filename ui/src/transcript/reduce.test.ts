@@ -35,7 +35,7 @@ const live = [
 describe('reduce: history and live agree', () => {
   const strip = (t: ReturnType<typeof reduceAll>) =>
     t.turns.map((turn) => turn.blocks.map((b) => {
-      const { id: _id, ...rest } = b as Record<string, unknown>;
+      const { id: _id, at: _at, ...rest } = b as Record<string, unknown>;
       return rest;
     }));
 
@@ -125,7 +125,7 @@ describe('summaries', () => {
 });
 
 describe('noise filter', () => {
-  it('produces no blocks for bookkeeping and system-reminder records', () => {
+  it('produces no blocks for bookkeeping records and meta user records', () => {
     const noise = [
       { type: 'system', subtype: 'turn_duration', durationMs: 10 },
       { type: 'system', subtype: 'stop_hook_summary', level: 'suggestion' },
@@ -133,12 +133,40 @@ describe('noise filter', () => {
       { type: 'ai-title', aiTitle: 'x' },
       { type: 'last-prompt', lastPrompt: 'x' },
       { type: 'attachment', attachment: { type: 'environment' } },
-      user('<system-reminder>\nstuff\n</system-reminder>'),
-      user('<local-command-caveat>Caveat</local-command-caveat>'),
       user([{ type: 'text', text: '[Image: source: /x.png]' }], { isMeta: true }),
       user('Stop hook feedback: nope', { isMeta: true }),
     ];
     expect(reduceAll(noise).turns).toEqual([]);
+  });
+
+  it('folds harness-injected user turns into tagged system blocks instead of dropping them', () => {
+    const t = reduceAll([
+      user('go'),
+      user('<system-reminder>\nremember the rules\n</system-reminder>'),
+      user('<task-notification>\n<task-id>abc</task-id>\n</task-notification>'),
+      user('<local-command-caveat>Caveat</local-command-caveat>'),
+    ]);
+    const blocks = t.turns[0].blocks;
+    expect(blocks.map((b) => b.kind)).toEqual(['user', 'system', 'system', 'system']);
+    expect(blocks[1]).toMatchObject({ kind: 'system', tag: 'system-reminder', text: 'remember the rules' });
+    expect(blocks[2]).toMatchObject({ kind: 'system', tag: 'task-notification' });
+    expect(blocks[3]).toMatchObject({ kind: 'system', tag: 'local-command-caveat', text: 'Caveat' });
+  });
+
+  it('carries record timestamps onto the user block and the first reply block of a turn', () => {
+    const t = reduceAll([
+      { ...user('hi'), timestamp: '2026-09-09T10:00:00Z' },
+      { ...assistant([{ type: 'thinking', thinking: 'hm' }]), timestamp: '2026-09-09T10:00:05Z' },
+      { ...assistant([{ type: 'text', text: 'hello' }]), timestamp: '2026-09-09T10:00:09Z' },
+      user('no stamp'),
+      assistant([{ type: 'text', text: 'none' }]),
+    ]);
+    const [first, second] = t.turns;
+    expect(first.blocks[0]).toMatchObject({ kind: 'user', at: '2026-09-09T10:00:00Z' });
+    expect(first.blocks[1]).toMatchObject({ kind: 'thinking', at: '2026-09-09T10:00:05Z' });
+    expect('at' in first.blocks[2] && first.blocks[2].at).toBeFalsy();
+    expect('at' in second.blocks[0] && second.blocks[0].at).toBeFalsy();
+    expect('at' in second.blocks[1] && second.blocks[1].at).toBeFalsy();
   });
 
   it('renders slash commands and shell input as notes and prompts', () => {

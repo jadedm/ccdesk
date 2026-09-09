@@ -146,8 +146,11 @@ describe.skipIf(!live)('live session over the sidecar', () => {
     expect(before.find((s) => s.sessionId === firstSessionId)?.customTitle).toBe('named at start');
     const patch = await fetch(`${base}/sessions/${firstSessionId}`, { method: 'PATCH', headers, body: JSON.stringify({ cwd, title: 'smoke one' }) });
     expect(patch.status).toBe(200);
-    const list = (await (await fetch(`${base}/sessions?cwd=${encodeURIComponent(cwd)}`, { headers })).json()) as Array<{ sessionId: string; customTitle?: string }>;
-    expect(list.find((s) => s.sessionId === firstSessionId)?.customTitle).toBe('smoke one');
+    const list = (await (await fetch(`${base}/sessions?cwd=${encodeURIComponent(cwd)}`, { headers })).json()) as Array<{ sessionId: string; customTitle?: string; messages?: number; model?: string | null }>;
+    const first = list.find((s) => s.sessionId === firstSessionId);
+    expect(first?.customTitle).toBe('smoke one');
+    expect(first?.messages ?? 0).toBeGreaterThanOrEqual(2);
+    expect(typeof first?.model).toBe('string');
     const history = (await (await fetch(`${base}/sessions/${firstSessionId}/messages?cwd=${encodeURIComponent(cwd)}`, { headers })).json()) as Array<{ type: string }>;
     expect(history.some((m) => m.type === 'user')).toBe(true);
     expect(history.some((m) => m.type === 'assistant')).toBe(true);
