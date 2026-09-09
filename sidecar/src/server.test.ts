@@ -119,6 +119,24 @@ describe('sidecar http', () => {
     expect((await call('GET', '/health')).status).toBe(200);
   });
 
+  it('closes promptly with a websocket and a keep-alive connection still open', async () => {
+    const own = await startServer({ indexPath: join(emptyDir, 'c.json'), sdkVersion: 'test' });
+    const ws = new WebSocket(`ws://127.0.0.1:${own.port}/ws?token=${own.token}`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => resolve());
+      ws.on('error', reject);
+    });
+    await fetch(`http://127.0.0.1:${own.port}/health`, { headers: { authorization: `Bearer ${own.token}`, connection: 'keep-alive' } });
+    const closed = new Promise<boolean>((resolve) => {
+      ws.on('close', () => resolve(true));
+      setTimeout(() => resolve(false), 2_000);
+    });
+    const started = Date.now();
+    await own.close();
+    expect(Date.now() - started).toBeLessThan(2_500);
+    expect(await closed).toBe(true);
+  });
+
   it('rejects a websocket upgrade without the token', async () => {
     const outcome = await new Promise<string>((resolve) => {
       const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);

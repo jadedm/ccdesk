@@ -1,6 +1,21 @@
+import { accessSync, constants } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { startServer } from './server.ts';
+
+/** CCDESK_CLAUDE_BIN wins. Otherwise the user's own `claude` on PATH, which is what dev runs use. */
+const claudeBinary = (): string | undefined => {
+  if (process.env.CCDESK_CLAUDE_BIN) return process.env.CCDESK_CLAUDE_BIN;
+  const onPath = (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'claude'));
+  return onPath.find((candidate) => {
+    try {
+      accessSync(candidate, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+};
 
 declare const __SDK_VERSION__: string | undefined;
 
@@ -10,12 +25,15 @@ const main = async (): Promise<void> => {
   const server = await startServer({
     indexPath: process.env.CCDESK_INDEX ?? join(homedir(), '.ccdesk', 'index.json'),
     sdkVersion: sdkVersion(),
-    claudeBinary: process.env.CCDESK_CLAUDE_BIN || undefined,
+    claudeBinary: claudeBinary(),
     port: process.env.CCDESK_PORT ? Number(process.env.CCDESK_PORT) : undefined,
     token: process.env.CCDESK_TOKEN || undefined,
   });
   process.stdout.write(JSON.stringify({ port: server.port, token: server.token }) + '\n');
+  // Exit within a bounded time whatever the SDK children are doing; the shell only waits
+  // three seconds before killing the process anyway.
   const shutdown = (): void => {
+    setTimeout(() => process.exit(0), 2_500).unref();
     void server.close().finally(() => process.exit(0));
   };
   process.on('SIGTERM', shutdown);

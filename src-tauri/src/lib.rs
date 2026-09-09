@@ -36,20 +36,29 @@ fn sidecar_log(app: &tauri::AppHandle) -> Stdio {
         .unwrap_or_else(|_| Stdio::inherit())
 }
 
-/// Locate node through the user's login shell. A GUI app launched from Finder carries
-/// almost no PATH, so `node` on PATH alone finds nothing under fnm, nvm or Homebrew.
-fn find_node() -> String {
-    if let Ok(explicit) = std::env::var("CCDESK_NODE") {
-        return explicit;
-    }
-    let from_shell = Command::new("/bin/zsh")
-        .args(["-lc", "command -v node"])
+/// What the user's login shell knows that a Finder launch does not: where node is, and the
+/// full PATH. A GUI app starts with `/usr/bin:/bin:/usr/sbin:/sbin`, under which `node` is
+/// missing and the Claude CLI reports "Not logged in" because it cannot reach the tools it
+/// uses to read its credentials.
+struct ShellEnv {
+    node: String,
+    path: Option<String>,
+}
+
+fn login_shell_env() -> ShellEnv {
+    let output = Command::new("/bin/zsh")
+        .args(["-lc", "printf '%s\n%s\n' \"$(command -v node)\" \"$PATH\""])
         .output()
         .ok()
         .and_then(|out| String::from_utf8(out.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    from_shell.unwrap_or_else(|| "node".to_string())
+        .unwrap_or_default();
+    let mut lines = output.lines().map(str::trim);
+    let node = lines.next().filter(|s| !s.is_empty()).map(str::to_string);
+    let path = lines.next().filter(|s| !s.is_empty()).map(str::to_string);
+    ShellEnv {
+        node: std::env::var("CCDESK_NODE").ok().or(node).unwrap_or_else(|| "node".to_string()),
+        path,
+    }
 }
 
 fn sidecar_script(app: &tauri::AppHandle) -> PathBuf {
@@ -65,17 +74,24 @@ fn sidecar_script(app: &tauri::AppHandle) -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("sidecar.cjs"))
 }
 
+/// The CLI binary the SDK was built against. In a release build it is a bundled resource;
+/// in dev it is the copy `scripts/prepare-resources.sh` puts under `src-tauri/resources`.
 fn bundled_claude(app: &tauri::AppHandle) -> Option<PathBuf> {
-    if cfg!(debug_assertions) {
-        return None;
-    }
-    let candidate = app.path().resource_dir().ok()?.join("sidecar/claude");
+    let candidate = if cfg!(debug_assertions) {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/claude")
+    } else {
+        app.path().resource_dir().ok()?.join("sidecar/claude")
+    };
     candidate.exists().then_some(candidate)
 }
 
 fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(Child, SidecarInfo), String> {
     let script = sidecar_script(app);
-    let mut command = Command::new(find_node());
+    let shell = login_shell_env();
+    let mut command = Command::new(&shell.node);
+    if let Some(path) = &shell.path {
+        command.env("PATH", path);
+    }
     command
         .arg(&script)
         .stdin(Stdio::piped())

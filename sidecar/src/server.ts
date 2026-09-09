@@ -204,10 +204,16 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
   const address = http.address();
   const port = typeof address === 'object' && address ? address.port : 0;
 
+  // Shutdown must finish even with keep-alive connections open and CLI children still
+  // winding down, so idle sockets are cut and the wait has a deadline.
   const close = async (): Promise<void> => {
     for (const manager of managers) manager.stopAll();
     for (const client of wss.clients) client.terminate();
-    await new Promise<void>((resolve) => http.close(() => resolve()));
+    http.closeAllConnections();
+    await Promise.race([
+      new Promise<void>((resolve) => http.close(() => resolve())),
+      new Promise<void>((resolve) => setTimeout(resolve, 2_000).unref()),
+    ]);
   };
 
   return { port, token, close };
