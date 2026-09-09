@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+src-tauri/target/
+src-tauri/gen/
+sidecar/dist/
+ui/dist/
+coverage/
+.env
+src-tauri/resources/

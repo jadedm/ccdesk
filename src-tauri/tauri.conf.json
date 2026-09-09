@@ -1,0 +1,41 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "ccdesk",
+  "version": "0.1.0",
+  "identifier": "com.manishj.ccdesk",
+  "build": {
+    "frontendDist": "../ui/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm --filter ui dev",
+    "beforeBuildCommand": "pnpm --filter ui build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ccdesk",
+        "width": 1280,
+        "height": 860,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "resources": {
+      "../sidecar/dist/sidecar.cjs": "sidecar/sidecar.cjs",
+      "resources/claude": "sidecar/claude"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
