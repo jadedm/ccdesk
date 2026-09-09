@@ -3,9 +3,16 @@
 # folder so the packaged app carries the CLI version the SDK was built against.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-src="$(find "$root/sidecar/node_modules/.pnpm" -path "*claude-agent-sdk-darwin-*/claude" -type f | head -1)"
-if [ -z "$src" ]; then src="$root/sidecar/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"; fi
-test -f "$src" || { echo "no bundled claude binary found under sidecar/node_modules" >&2; exit 1; }
+case "$(uname -m)" in
+  arm64) platform="darwin-arm64" ;;
+  x86_64) platform="darwin-x64" ;;
+  *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+esac
+# pnpm keeps the real package under node_modules/.pnpm at the workspace root; older layouts
+# put it under the package's own node_modules.
+src="$(find "$root/node_modules/.pnpm" "$root/sidecar/node_modules/.pnpm" -path "*claude-agent-sdk-${platform}*/claude" -type f 2>/dev/null | head -1 || true)"
+if [ -z "$src" ]; then src="$root/sidecar/node_modules/@anthropic-ai/claude-agent-sdk-${platform}/claude"; fi
+test -f "$src" || { echo "no bundled claude binary for ${platform} under node_modules" >&2; exit 1; }
 mkdir -p "$root/src-tauri/resources"
 cp "$src" "$root/src-tauri/resources/claude"
 chmod +x "$root/src-tauri/resources/claude"
