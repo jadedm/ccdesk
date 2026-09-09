@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@tauri-apps/plugin-dialog':
-        specifier: ^2.7.3
-        version: 2.7.3
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.11.4

@@ -41,8 +41,9 @@ the packaged app hands it to the webview through `sidecar_info` instead.
 
 - Solo repo. Integration branch is `main`. Step 12 of the loop (team review) is N/A.
 - Squash merge, delete branch.
-- The CLI's JSONL session files are never written by ccdesk. Names go through the SDK's
-  `renameSession` so the terminal `/resume` picker shows the same title.
+- The CLI's JSONL session files are never written by ccdesk. A new session's name goes in
+  as the SDK's `title` on `query()`; a rename goes through `renameSession`. Either way the
+  terminal `/resume` picker shows the same title, and a resumed session keeps its stored one.
 - `settingSources` is `user, project, local` and the system prompt is the `claude_code`
   preset, so CLAUDE.md, hooks, skills and MCP servers load as in the terminal.
 - Requires Node 22 and a Claude Code login under `~/.claude`. The sidecar's stderr goes to

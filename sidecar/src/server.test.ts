@@ -149,6 +149,8 @@ describe('sidecar http', () => {
   it('creates workspace and folder, files a session, and reports conflicts and validation', async () => {
     const ws = await (await call('POST', '/workspaces', { name: 'W', cwd: emptyDir })).json();
     const folder = await (await call('POST', `/workspaces/${ws.id}/folders`, { name: 'F' })).json();
+    const withDir = await (await call('POST', `/workspaces/${ws.id}/folders`, { name: 'G', cwd: emptyDir })).json();
+    expect(withDir.cwd).toBe(emptyDir);
     expect((await call('POST', `/folders/${folder.id}/sessions`, { sessionId: 's1', cwd: emptyDir })).status).toBe(200);
     const dup = await call('POST', `/folders/${folder.id}/sessions`, { sessionId: 's1', cwd: emptyDir });
     expect(dup.status).toBe(409);
@@ -158,6 +160,7 @@ describe('sidecar http', () => {
     expect((await call('POST', '/workspaces/nope/folders', { name: 'x' })).status).toBe(404);
     const index = await (await call('GET', '/index')).json();
     expect(index.workspaces[0].folders[0].sessions).toEqual([{ sessionId: 's1', cwd: emptyDir }]);
+    expect(index.workspaces[0].folders[1].cwd).toBe(emptyDir);
   });
 
   it('returns 400 for malformed json and 404 for unknown routes', async () => {

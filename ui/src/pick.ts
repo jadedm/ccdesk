@@ -1,9 +1,9 @@
 // Native directory picker inside Tauri; null in a plain browser, where the typed field is
 // the fallback.
 
-type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown };
+import { insideTauri } from './api.ts';
 
-export const hasNativeDialog = (): boolean => Boolean((window as TauriWindow).__TAURI_INTERNALS__);
+export const hasNativeDialog = (): boolean => insideTauri();
 
 export const pickDirectory = async (defaultPath?: string): Promise<string | null> => {
   if (!hasNativeDialog()) return null;

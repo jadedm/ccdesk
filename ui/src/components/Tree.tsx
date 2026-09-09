@@ -17,6 +17,8 @@ export type TreeProps = {
 
 const short = (path: string): string => path.replace(/^\/Users\/[^/]+/, '~');
 
+const chooseLabel = { required: 'choose directory', optional: 'directory (optional)' } as const;
+
 type NameFormProps = {
   placeholder: string;
   onSubmit: (name: string, cwd: string) => void;
@@ -24,15 +26,19 @@ type NameFormProps = {
   /** 'required' shows the directory field and needs a value; 'optional' shows it and allows empty. */
   directory?: 'required' | 'optional';
   defaultDirectory?: string;
+  /** An empty name is allowed; the caller decides what that means. */
+  nameOptional?: boolean;
 };
 
 // Name plus, when asked for, a directory. Inside Tauri the directory comes from the native
 // picker; in a browser it is typed.
-const NameForm = ({ placeholder, onSubmit, onCancel, directory, defaultDirectory }: NameFormProps) => {
+const NameForm = ({ placeholder, onSubmit, onCancel, directory, defaultDirectory, nameOptional }: NameFormProps) => {
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const native = hasNativeDialog();
-  const valid = name.trim() !== '' && (directory !== 'required' || cwd.trim().startsWith('/')) && (cwd.trim() === '' || cwd.trim().startsWith('/'));
+  const nameOk = nameOptional || name.trim() !== '';
+  const cwdOk = (directory !== 'required' || cwd.trim().startsWith('/')) && (cwd.trim() === '' || cwd.trim().startsWith('/'));
+  const valid = nameOk && cwdOk;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
@@ -48,7 +54,7 @@ const NameForm = ({ placeholder, onSubmit, onCancel, directory, defaultDirectory
       <input autoFocus placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={escape} aria-label={placeholder} />
       {directory && native && (
         <button type="button" className="mini" onClick={() => void choose()} title={cwd || 'choose a directory'}>
-          {cwd ? short(cwd) : directory === 'required' ? 'choose directory' : 'directory (optional)'}
+          {cwd ? short(cwd) : chooseLabel[directory]}
         </button>
       )}
       {directory && !native && (
@@ -87,7 +93,9 @@ export const Tree = (p: TreeProps) => {
   return (
     <aside className="rail">
       <h1>Workspaces</h1>
-      {p.index?.workspaces.map((ws) => (
+      {p.index?.workspaces.map((ws) => {
+        const unfiled = unfiledOf(ws);
+        return (
         <div className="workspace" key={ws.id}>
           <div className="row">
             <span className="label">{ws.name}</span>
@@ -99,13 +107,13 @@ export const Tree = (p: TreeProps) => {
           )}
           {ws.folders.map((folder) => (
             <div className="folder" key={folder.id}>
-              <div className="row" title={folder.cwd ? short(folder.cwd) : undefined}>
+              <div className="row">
                 <span className="label">{folder.name}</span>
                 <button className="mini" title="new session" onClick={() => setAdding(`session:${folder.id}`)}>+ session</button>
               </div>
               {folder.cwd && <div className="cwd" title={folder.cwd}>{short(folder.cwd)}</div>}
               {adding === `session:${folder.id}` && (
-                <NameForm placeholder="session name" onCancel={() => setAdding(null)} onSubmit={(name) => { p.onNewSession(ws, folder, name); setAdding(null); }} />
+                <NameForm placeholder="session name (blank lets the CLI title it)" nameOptional onCancel={() => setAdding(null)} onSubmit={(name) => { p.onNewSession(ws, folder, name); setAdding(null); }} />
               )}
               {folder.sessions.map((s) => (
                 <SessionRow key={s.sessionId} id={s.sessionId} title={titleOf(s.sessionId, ws)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, folder, s.sessionId, titleOf(s.sessionId, ws))} />
@@ -113,16 +121,17 @@ export const Tree = (p: TreeProps) => {
               {folder.sessions.length === 0 && adding !== `session:${folder.id}` && <div className="row session muted">empty</div>}
             </div>
           ))}
-          {unfiledOf(ws).length > 0 && (
+          {unfiled.length > 0 && (
             <div className="folder">
               <div className="row"><span className="label muted">Unfiled</span></div>
-              {unfiledOf(ws).map((s) => (
+              {unfiled.map((s) => (
                 <SessionRow key={s.sessionId} id={s.sessionId} title={s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, null, s.sessionId, s.customTitle || s.summary || s.sessionId.slice(0, 8), s.listedIn)} />
               ))}
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
       {adding === 'workspace' ? (
         <NameForm placeholder="workspace name" directory="required" onCancel={() => setAdding(null)} onSubmit={(name, cwd) => { p.onCreateWorkspace(name, cwd); setAdding(null); }} />
       ) : (

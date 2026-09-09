@@ -51,9 +51,9 @@ const bionify = (children: ReactNode): ReactNode => {
 };
 
 const bionicComponents: Components = {
-  p: ({ children }) => <p>{bionify(children)}</p>,
-  li: ({ children }) => <li>{bionify(children)}</li>,
-  td: ({ children }) => <td>{bionify(children)}</td>,
+  p: ({ children, node: _node, ...rest }) => <p {...rest}>{bionify(children)}</p>,
+  li: ({ children, node: _node, ...rest }) => <li {...rest}>{bionify(children)}</li>,
+  td: ({ children, node: _node, ...rest }) => <td {...rest}>{bionify(children)}</td>,
 };
 
 const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) => {
@@ -79,6 +79,8 @@ const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) =>
       return <div className={block.tone === 'error' ? 'note error' : 'note'}>{block.text}</div>;
   }
 });
+
+export { BlockView };
 
 export const Transcript = ({ transcript, hideThinking, bionic }: { transcript: TranscriptModel; hideThinking: boolean; bionic: boolean }) => {
   const bottom = useRef<HTMLDivElement>(null);

@@ -65,10 +65,12 @@ describe('IndexStore', () => {
     expect(plain.cwd).toBeUndefined();
     const withDir = await store.createFolder(ws.id, 'proj', '/tmp/w/proj');
     expect(withDir.cwd).toBe('/tmp/w/proj');
-    expect(await codeOf(store.createFolder(ws.id, 'bad', 'relative'))).toBe('400 cwd_required');
+    expect(await codeOf(store.createFolder(ws.id, 'bad', 'relative'))).toBe('400 bad_cwd');
+    const slashed = await store.createFolder(ws.id, 'slashed', '/tmp/w/proj2/');
+    expect(slashed.cwd).toBe('/tmp/w/proj2');
     const empty = await store.createFolder(ws.id, 'empty', '');
     expect(empty.cwd).toBeUndefined();
-    expect(store.snapshot().workspaces[0].folders.map((f) => f.cwd)).toEqual([undefined, '/tmp/w/proj', undefined]);
+    expect(store.snapshot().workspaces[0].folders.map((f) => f.cwd)).toEqual([undefined, '/tmp/w/proj', '/tmp/w/proj2', undefined]);
   });
 
   it('loads an index written before folders had directories', async () => {

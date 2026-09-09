@@ -21,10 +21,12 @@ const cleanName = (name: unknown): string => {
   return trimmed;
 };
 
+/** Absolute, with trailing slashes dropped so `/w/b/` and `/w/b` are one directory. */
 const cleanPath = (value: unknown, code: string): string => {
   const trimmed = typeof value === 'string' ? value.trim() : '';
   if (!trimmed.startsWith('/')) throw badRequest(code, 'absolute path required');
-  return trimmed;
+  const stripped = trimmed.replace(/\/+$/, '');
+  return stripped === '' ? '/' : stripped;
 };
 
 /** The workspace, folder and session index. Persisted as one JSON file, rewritten atomically. */
@@ -62,7 +64,7 @@ export class IndexStore {
   async createFolder(workspaceId: string, name: unknown, cwd?: unknown): Promise<IndexFolder> {
     const workspace = this.workspace(workspaceId);
     const folder: IndexFolder = { id: randomUUID(), name: cleanName(name), sessions: [] };
-    if (cwd !== undefined && cwd !== null && cwd !== '') folder.cwd = cleanPath(cwd, 'cwd_required');
+    if (cwd !== undefined && cwd !== null && cwd !== '') folder.cwd = cleanPath(cwd, 'bad_cwd');
     workspace.folders.push(folder);
     await this.save();
     return structuredClone(folder);

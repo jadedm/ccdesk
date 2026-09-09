@@ -30,14 +30,9 @@ export default function App() {
   const [socketState, setSocketState] = useState<SocketState>('connecting');
   const everOpen = useRef(false);
   const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
-  const setPrefs = (change: Partial<Prefs>) =>
-    setPrefsState((current) => {
-      const next = { ...current, ...change };
-      savePrefs(next);
-      return next;
-    });
+  const setPrefs = (change: Partial<Prefs>) => setPrefsState((current) => ({ ...current, ...change }));
+  useEffect(() => savePrefs(prefs), [prefs]);
   const hideThinking = prefs.hideThinking;
-  const dragging = useRef(false);
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const socket = useRef<Socket | null>(null);
@@ -114,8 +109,8 @@ export default function App() {
     const key = newKey();
     const cwd = folderCwd(ws, folder);
     pendingFile.current[key] = { folderId: folder.id, cwd };
-    dispatch({ type: 'new_live', key, cwd, folderId: folder.id, title, resume: null });
-    send({ type: 'start', key, cwd, title });
+    dispatch({ type: 'new_live', key, cwd, folderId: folder.id, title: title || 'New session', resume: null });
+    send({ type: 'start', key, cwd, title: title || undefined });
   };
 
   // Where a session's store lives: the filed cwd, the directory it was listed from, or the folder's.
@@ -155,20 +150,22 @@ export default function App() {
 
   const banner = discoveryError ?? (socketState !== 'open' ? `sidecar ${socketState}, retrying` : appError);
 
-  const startDrag = (e: React.MouseEvent) => {
+  // Pointer capture keeps the drag on the splitter until release, wherever the pointer
+  // goes, and a release outside the window still ends it.
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    dragging.current = true;
-    const move = (ev: MouseEvent) => {
-      if (!dragging.current) return;
-      setPrefs({ railWidth: clampRail(ev.clientX) });
-    };
-    const stop = () => {
-      dragging.current = false;
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', stop);
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', stop);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    if (e.buttons === 0) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      return;
+    }
+    setPrefs({ railWidth: clampRail(e.clientX) });
+  };
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
   const style = { '--rail': `${prefs.railWidth}px`, '--prose-size': `${prefs.textSize}px` } as React.CSSProperties;
@@ -185,7 +182,7 @@ export default function App() {
         onNewSession={onNewSession}
         onOpenSession={(ws, folder, id, title, listedIn) => void onOpenSession(ws, folder, id, title, listedIn)}
       />
-      <div className="splitter" onMouseDown={startDrag} title="drag to resize" />
+      <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
       <main className="main">
         <div>
           {banner && (

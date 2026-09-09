@@ -5,6 +5,8 @@ import type { ClientMessage, ServerMessage, SessionSummary, SidecarInfo, Workspa
 
 type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown };
 
+export const insideTauri = (): boolean => Boolean((window as TauriWindow).__TAURI_INTERNALS__);
+
 const fromUrl = (): SidecarInfo | null => {
   const params = new URLSearchParams(window.location.search);
   const port = Number(params.get('port'));
@@ -16,7 +18,7 @@ const fromUrl = (): SidecarInfo | null => {
 export const discoverSidecar = async (): Promise<SidecarInfo> => {
   const fromQuery = fromUrl();
   if (fromQuery) return fromQuery;
-  if (!(window as TauriWindow).__TAURI_INTERNALS__) throw new Error('no sidecar: open with ?port=&token= or inside ccdesk');
+  if (!insideTauri()) throw new Error('no sidecar: open with ?port=&token= or inside ccdesk');
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<SidecarInfo>('sidecar_info');
 };

@@ -10,14 +10,17 @@ export const textBounds = { min: 13, max: 26 };
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
+/** Stored values may be anything; only a finite number is used, otherwise the default. */
+const numberOr = (value: unknown, fallback: number): number => (Number.isFinite(Number(value)) && value !== null && value !== '' ? Number(value) : fallback);
+
 export const loadPrefs = (): Prefs => {
   try {
     const raw = localStorage.getItem('ccdesk.prefs');
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<Prefs>;
     return {
-      railWidth: clamp(Number(parsed.railWidth ?? defaults.railWidth), railBounds.min, railBounds.max),
-      textSize: clamp(Number(parsed.textSize ?? defaults.textSize), textBounds.min, textBounds.max),
+      railWidth: clamp(numberOr(parsed.railWidth, defaults.railWidth), railBounds.min, railBounds.max),
+      textSize: clamp(numberOr(parsed.textSize, defaults.textSize), textBounds.min, textBounds.max),
       bionic: Boolean(parsed.bionic ?? defaults.bionic),
       hideThinking: Boolean(parsed.hideThinking ?? defaults.hideThinking),
     };

@@ -26,13 +26,21 @@ export const bionicNodes = (text: string): ReactNode[] => {
       out.push(part);
       return;
     }
-    // Count letters, skipping leading punctuation such as quotes or brackets.
+    // Count letters, skipping leading punctuation such as quotes or brackets. After the
+    // last counted letter, keep any combining marks, joiners and variation selectors with
+    // it: cutting before them orphans a vowel sign or splits an emoji sequence.
     let seen = 0;
     let cut = 0;
-    for (const ch of part) {
-      cut += ch.length;
-      if (/[\p{L}\p{N}]/u.test(ch)) seen++;
-      if (seen === n) break;
+    const chars = Array.from(part);
+    for (let i = 0; i < chars.length; i++) {
+      cut += chars[i].length;
+      if (/[\p{L}\p{N}]/u.test(chars[i])) seen++;
+      if (seen < n) continue;
+      while (i + 1 < chars.length && /^(?:\p{M}|\u200D|\uFE0F)$/u.test(chars[i + 1])) {
+        i++;
+        cut += chars[i].length;
+      }
+      break;
     }
     out.push(createElement('b', { key: i, className: 'bio' }, part.slice(0, cut)), part.slice(cut));
   });
