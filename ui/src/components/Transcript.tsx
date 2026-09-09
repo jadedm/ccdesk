@@ -81,30 +81,19 @@ const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) =>
       );
     case 'text':
       return (
-        <>
-          {block.at && <Role who="claude" at={block.at} />}
-          <div className={block.streaming ? 'prose streaming' : 'prose'}>
-            <Markdown remarkPlugins={[remarkGfm]} components={bionic ? bionicComponents : undefined}>{block.text}</Markdown>
-          </div>
-        </>
+        <div className={block.streaming ? 'prose streaming' : 'prose'}>
+          <Markdown remarkPlugins={[remarkGfm]} components={bionic ? bionicComponents : undefined}>{block.text}</Markdown>
+        </div>
       );
     case 'thinking':
       return (
-        <>
-          {block.at && <Role who="claude" at={block.at} />}
-          <details className="thinking">
-            <summary>thinking{block.streaming ? '…' : ''}</summary>
-            <div className="body">{block.text}</div>
-          </details>
-        </>
+        <details className="thinking">
+          <summary>thinking{block.streaming ? '…' : ''}</summary>
+          <div className="body">{block.text}</div>
+        </details>
       );
     case 'tool':
-      return (
-        <>
-          {block.at && <Role who="claude" at={block.at} />}
-          <ToolLine block={block} />
-        </>
-      );
+      return <ToolLine block={block} />;
     case 'system':
       return (
         <details className="system">
@@ -120,7 +109,9 @@ const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) =>
   }
 });
 
-export { BlockView };
+export { BlockView, Role };
+
+const isReply = (b: Block): boolean => b.kind === 'text' || b.kind === 'thinking' || b.kind === 'tool';
 
 type TranscriptProps = {
   transcript: TranscriptModel;
@@ -165,14 +156,23 @@ export const Transcript = ({ transcript, view, sessionKey, following }: Transcri
   return (
     <div className="transcript" ref={scroller} onScroll={onScroll}>
       <div className="reading">
-        {transcript.turns.map((turn, i) => (
-          <section className="turn" key={turn.id} id={turn.id}>
-            <div className="turn-index">{i + 1}</div>
-            {turn.blocks.filter((b) => visible(b, view)).map((block) => (
-              <BlockView block={block} bionic={view.bionic} key={block.id} />
-            ))}
-          </section>
-        ))}
+        {transcript.turns.map((turn, i) => {
+          const shown = turn.blocks.filter((b) => visible(b, view));
+          // The claude label goes before the first reply block that is actually visible, so a
+          // hidden thinking block never swallows it.
+          const labelBefore = turn.replyAt ? shown.find(isReply)?.id : undefined;
+          return (
+            <section className="turn" key={turn.id} id={turn.id}>
+              <div className="turn-index">{i + 1}</div>
+              {shown.map((block) => (
+                <span key={block.id} style={{ display: 'contents' }}>
+                  {block.id === labelBefore && <Role who="claude" at={turn.replyAt} />}
+                  <BlockView block={block} bionic={view.bionic} />
+                </span>
+              ))}
+            </section>
+          );
+        })}
       </div>
     </div>
   );

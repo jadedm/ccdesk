@@ -88,7 +88,9 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     route('GET', '/sessions', async (_req, _p, _b, url) => {
       const cwd = requireCwd(url.searchParams.get('cwd'));
       const list = await listSessions({ dir: cwd });
-      return Promise.all(list.map(async (s) => ({ ...s, ...(await meta.read(sessionFile(cwd, s.sessionId))) })));
+      // A session listed for this directory may live in another worktree's store; its own
+      // cwd names that store.
+      return Promise.all(list.map(async (s) => ({ ...s, ...(await meta.read(sessionFile(s.cwd ?? cwd, s.sessionId))) })));
     }),
     route('GET', '/sessions/:id/messages', async (_req, p, _b, url) =>
       getSessionMessages(p.id, { dir: requireCwd(url.searchParams.get('cwd')) }),

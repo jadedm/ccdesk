@@ -163,10 +163,9 @@ describe('noise filter', () => {
     ]);
     const [first, second] = t.turns;
     expect(first.blocks[0]).toMatchObject({ kind: 'user', at: '2026-09-09T10:00:00Z' });
-    expect(first.blocks[1]).toMatchObject({ kind: 'thinking', at: '2026-09-09T10:00:05Z' });
-    expect('at' in first.blocks[2] && first.blocks[2].at).toBeFalsy();
+    expect(first.replyAt).toBe('2026-09-09T10:00:05Z');
     expect('at' in second.blocks[0] && second.blocks[0].at).toBeFalsy();
-    expect('at' in second.blocks[1] && second.blocks[1].at).toBeFalsy();
+    expect(second.replyAt).toBeUndefined();
   });
 
   it('renders slash commands and shell input as notes and prompts', () => {

@@ -18,6 +18,7 @@ const fixture = [
   line({ type: 'assistant', message: { role: 'assistant', content: [] } }),
   '{not json',
   line({ type: 'user', message: { role: 'user', content: 'three' } }),
+  line({ type: 'user', isMeta: true, message: { role: 'user', content: 'Stop hook feedback: x' } }),
   line({ type: 'assistant', message: { role: 'assistant', content: [] } }),
   line({ type: 'ai-title', aiTitle: 'x' }),
   line({ type: 'last-prompt' }),

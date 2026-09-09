@@ -31,13 +31,15 @@ const scan = async (file: string): Promise<SessionMeta> => {
   const lines = createInterface({ input: createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
   for await (const line of lines) {
     if (line === '') continue;
-    let record: { type?: string; message?: { model?: string } };
+    let record: { type?: string; isMeta?: boolean; message?: { model?: string } };
     try {
       record = JSON.parse(line) as typeof record;
     } catch {
       continue;
     }
     if (record.type !== 'user' && record.type !== 'assistant') continue;
+    // Meta user records are attachment placeholders and hook feedback, not conversation.
+    if (record.type === 'user' && record.isMeta) continue;
     messages++;
     if (!model && record.type === 'assistant' && record.message?.model) model = record.message.model;
   }

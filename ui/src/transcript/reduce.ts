@@ -114,17 +114,13 @@ const placeUserBlock = (t: Transcript, block: Block | null): void => {
   else append(t, block);
 };
 
-/** The first assistant block of a turn carries the reply's timestamp for the role label. */
+/** The turn remembers when its reply began; the renderer labels the first visible reply block. */
 const stampReply = (t: Transcript, at: string | undefined): void => {
   if (!at) return;
   const turn = currentTurn(t);
-  const replyStarted = turn.blocks.some((b) => b.kind !== 'user' && b.kind !== 'system' && 'at' in b && b.at);
-  if (replyStarted) return;
-  const first = turn.blocks.findIndex((b) => b.kind === 'text' || b.kind === 'thinking' || b.kind === 'tool');
-  if (first === -1) return;
-  const block = turn.blocks[first];
-  if (block.kind === 'text') patch(turn, first, { at });
-  if (block.kind === 'tool' || block.kind === 'thinking') turn.blocks[first] = { ...block, at } as Block;
+  if (turn.replyAt) return;
+  const hasReply = turn.blocks.some((b) => b.kind === 'text' || b.kind === 'thinking' || b.kind === 'tool');
+  if (hasReply) turn.replyAt = at;
 };
 
 const resultText = (content: ToolResultBlock): string => {

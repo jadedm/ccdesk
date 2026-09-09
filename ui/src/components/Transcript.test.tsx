@@ -19,14 +19,27 @@ describe('BlockView', () => {
     expect(on.match(/<b class="bio">/g)?.length).toBeGreaterThan(3);
   });
 
-  it('labels a user turn and a timestamped reply with who and when', () => {
+  it('labels a user turn with who and when', () => {
     const user = renderToStaticMarkup(<BlockView block={{ kind: 'user', id: 'u', text: 'hi', at: '2026-09-09T10:05:00Z' }} bionic={false} />);
     expect(user).toContain('class="who">you<');
     expect(user).toMatch(/class="time">\d{1,2}:\d{2}/);
-    const reply = renderToStaticMarkup(<BlockView block={{ ...block, at: '2026-09-09T10:05:30Z' }} bionic={false} />);
-    expect(reply).toContain('class="who">claude<');
-    const unstamped = renderToStaticMarkup(<BlockView block={block} bionic={false} />);
-    expect(unstamped).not.toContain('class="who"');
+    const unstamped = renderToStaticMarkup(<BlockView block={{ kind: 'user', id: 'u', text: 'hi' }} bionic={false} />);
+    expect(unstamped).not.toContain('class="time"');
+  });
+
+  it('puts the claude label before the first visible reply block, even when thinking is hidden', () => {
+    const turn = { id: 'turn-1', replyAt: '2026-09-09T10:05:30Z', blocks: [
+      { kind: 'user' as const, id: 'u', text: 'hi' },
+      { kind: 'thinking' as const, id: 'th', text: 'hm', streaming: false },
+      { ...block },
+    ] };
+    const html = renderToStaticMarkup(<Transcript transcript={{ turns: [turn] }} view={{ hideThinking: true, showTools: true, showSystem: false, bionic: false }} sessionKey="k" following={false} />);
+    const label = html.indexOf('class="who">claude<');
+    expect(label).toBeGreaterThan(-1);
+    expect(html.indexOf('class="prose"')).toBeGreaterThan(label);
+    expect(html).not.toContain('class="thinking"');
+    const none = renderToStaticMarkup(<Transcript transcript={{ turns: [{ ...turn, replyAt: undefined }] }} view={all} sessionKey="k" following={false} />);
+    expect(none).not.toContain('class="who">claude<');
   });
 });
 
