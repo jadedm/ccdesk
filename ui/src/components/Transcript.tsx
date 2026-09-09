@@ -1,0 +1,92 @@
+import { useEffect, useRef } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.ts';
+import { toolDisplayName } from '../transcript/summaries.ts';
+
+const ToolLine = ({ block }: { block: Extract<Block, { kind: 'tool' }> }) => {
+  const count = block.result
+    ? block.result.isError
+      ? 'error'
+      : `${block.result.lines} line${block.result.lines === 1 ? '' : 's'}`
+    : block.streaming
+      ? 'running'
+      : 'no result';
+  const countClass = block.result?.isError ? 'count error' : block.result ? 'count' : 'count pending';
+  return (
+    <details className="tool">
+      <summary>
+        <span className="name">{toolDisplayName(block.name)}</span>
+        <span className="sum">{block.summary}</span>
+        <span className={countClass}>{count}</span>
+      </summary>
+      <div className="body">
+        <h4>Input</h4>
+        <pre>{formatInput(block.input)}</pre>
+        {block.result && (
+          <>
+            <h4>{block.result.isError ? 'Error' : 'Result'}</h4>
+            <pre>{block.result.text || '(empty)'}</pre>
+          </>
+        )}
+      </div>
+    </details>
+  );
+};
+
+const formatInput = (input: Record<string, unknown>): string => {
+  const keys = Object.keys(input);
+  if (keys.length === 1 && typeof input[keys[0]] === 'string') return `${keys[0]}: ${input[keys[0]] as string}`;
+  return keys.map((k) => `${k}: ${typeof input[k] === 'string' ? input[k] : JSON.stringify(input[k], null, 2)}`).join('\n');
+};
+
+const BlockView = ({ block }: { block: Block }) => {
+  switch (block.kind) {
+    case 'user':
+      return <div className="user">{block.text}</div>;
+    case 'text':
+      return (
+        <div className={block.streaming ? 'prose streaming' : 'prose'}>
+          <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>
+        </div>
+      );
+    case 'thinking':
+      return (
+        <details className="thinking">
+          <summary>thinking{block.streaming ? '…' : ''}</summary>
+          <div className="body">{block.text}</div>
+        </details>
+      );
+    case 'tool':
+      return <ToolLine block={block} />;
+    case 'note':
+      return <div className={block.tone === 'error' ? 'note error' : 'note'}>{block.text}</div>;
+  }
+};
+
+export const Transcript = ({ transcript, hideThinking }: { transcript: TranscriptModel; hideThinking: boolean }) => {
+  const bottom = useRef<HTMLDivElement>(null);
+  const lastTurn = transcript.turns[transcript.turns.length - 1];
+  const lastBlock = lastTurn?.blocks[lastTurn.blocks.length - 1];
+  const tail = lastBlock && 'text' in lastBlock ? lastBlock.text.length : 0;
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' });
+  }, [transcript.turns.length, tail]);
+
+  if (transcript.turns.length === 0) return <div className="transcript"><div className="empty">No messages yet.</div></div>;
+  return (
+    <div className={hideThinking ? 'transcript hide-thinking' : 'transcript'}>
+      <div className="reading">
+        {transcript.turns.map((turn, i) => (
+          <section className="turn" key={turn.id} id={turn.id}>
+            <div className="turn-index">{i + 1}</div>
+            {turn.blocks.map((block) => (
+              <BlockView block={block} key={block.id} />
+            ))}
+          </section>
+        ))}
+        <div ref={bottom} />
+      </div>
+    </div>
+  );
+};

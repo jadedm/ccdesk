@@ -1,0 +1,78 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { WebSocket } from 'ws';
+import { startServer, type RunningServer } from './server.ts';
+
+let server: RunningServer;
+let base: string;
+let emptyDir: string;
+
+beforeAll(async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ccdesk-server-'));
+  emptyDir = await mkdtemp(join(tmpdir(), 'ccdesk-empty-'));
+  server = await startServer({ indexPath: join(dir, 'index.json'), sdkVersion: 'test' });
+  base = `http://127.0.0.1:${server.port}`;
+});
+
+afterAll(async () => {
+  await server.close();
+});
+
+const call = (method: string, path: string, body?: unknown, token = server.token) =>
+  fetch(base + path, {
+    method,
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+describe('sidecar http', () => {
+  it('answers health with the token and 401 without it', async () => {
+    const ok = await call('GET', '/health');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, sdkVersion: 'test' });
+    expect((await call('GET', '/health', undefined, 'wrong')).status).toBe(401);
+    expect((await fetch(base + '/health')).status).toBe(401);
+  });
+
+  it('rejects a websocket upgrade without the token', async () => {
+    const outcome = await new Promise<string>((resolve) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      ws.on('open', () => resolve('open'));
+      ws.on('error', (e) => resolve(e.message));
+    });
+    expect(outcome).toContain('401');
+  });
+
+  it('creates workspace and folder, files a session, and reports conflicts and validation', async () => {
+    const ws = await (await call('POST', '/workspaces', { name: 'W', cwd: emptyDir })).json();
+    const folder = await (await call('POST', `/workspaces/${ws.id}/folders`, { name: 'F' })).json();
+    expect((await call('POST', `/folders/${folder.id}/sessions`, { sessionId: 's1', cwd: emptyDir })).status).toBe(200);
+    const dup = await call('POST', `/folders/${folder.id}/sessions`, { sessionId: 's1', cwd: emptyDir });
+    expect(dup.status).toBe(409);
+    expect((await dup.json()).error).toBe('session_already_filed');
+    const bad = await call('POST', '/workspaces', { name: '' });
+    expect(bad.status).toBe(400);
+    expect((await call('POST', '/workspaces/nope/folders', { name: 'x' })).status).toBe(404);
+    const index = await (await call('GET', '/index')).json();
+    expect(index.workspaces[0].folders[0].sessions).toEqual([{ sessionId: 's1', cwd: emptyDir }]);
+  });
+
+  it('returns 400 for malformed json and 404 for unknown routes', async () => {
+    const res = await fetch(base + '/workspaces', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${server.token}` },
+      body: '{not json',
+    });
+    expect(res.status).toBe(400);
+    expect((await call('GET', '/nope')).status).toBe(404);
+  });
+
+  it('lists no sessions for a directory that has none and requires cwd', async () => {
+    const none = await call('GET', `/sessions?cwd=${encodeURIComponent(emptyDir)}`);
+    expect(none.status).toBe(200);
+    expect(await none.json()).toEqual([]);
+    expect((await call('GET', '/sessions')).status).toBe(400);
+  });
+});
