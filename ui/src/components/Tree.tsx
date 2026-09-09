@@ -1,17 +1,18 @@
 import { useState, type FormEvent } from 'react';
-import type { IndexFolder, IndexWorkspace, SessionSummary, WorkspaceIndex } from '../../../shared/protocol.ts';
+import type { IndexFolder, IndexWorkspace, WorkspaceIndex } from '../../../shared/protocol.ts';
+import type { ListedSession } from '../cwd.ts';
 import { hasNativeDialog, pickDirectory } from '../pick.ts';
 import type { SessionView } from '../state.ts';
 
 export type TreeProps = {
   index: WorkspaceIndex | null;
-  unfiled: Record<string, SessionSummary[]>;
+  unfiled: Record<string, ListedSession[]>;
   sessions: Record<string, SessionView>;
   activeKey: string | null;
   onCreateWorkspace: (name: string, cwd: string) => void;
   onCreateFolder: (workspaceId: string, name: string, cwd: string | null) => void;
   onNewSession: (workspace: IndexWorkspace, folder: IndexFolder, title: string) => void;
-  onOpenSession: (workspace: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string) => void;
+  onOpenSession: (workspace: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string, listedIn?: string) => void;
 };
 
 const short = (path: string): string => path.replace(/^\/Users\/[^/]+/, '~');
@@ -82,7 +83,7 @@ export const Tree = (p: TreeProps) => {
     const live = Object.values(p.sessions).find((s) => s.sessionId === id);
     return live?.title || known?.customTitle || known?.summary || known?.firstPrompt || id.slice(0, 8);
   };
-  const unfiledOf = (ws: IndexWorkspace): SessionSummary[] => (p.unfiled[ws.id] ?? []).filter((s) => !filedIds.has(s.sessionId));
+  const unfiledOf = (ws: IndexWorkspace): ListedSession[] => (p.unfiled[ws.id] ?? []).filter((s) => !filedIds.has(s.sessionId));
   return (
     <aside className="rail">
       <h1>Workspaces</h1>
@@ -116,7 +117,7 @@ export const Tree = (p: TreeProps) => {
             <div className="folder">
               <div className="row"><span className="label muted">Unfiled</span></div>
               {unfiledOf(ws).map((s) => (
-                <SessionRow key={s.sessionId} id={s.sessionId} title={s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, null, s.sessionId, s.customTitle || s.summary || s.sessionId.slice(0, 8))} />
+                <SessionRow key={s.sessionId} id={s.sessionId} title={s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8)} sessions={p.sessions} activeKey={p.activeKey} onOpen={() => p.onOpenSession(ws, null, s.sessionId, s.customTitle || s.summary || s.sessionId.slice(0, 8), s.listedIn)} />
               ))}
             </div>
           )}

@@ -4,7 +4,7 @@ import { Api, Socket, discoverSidecar, type SocketState } from './api.ts';
 import { Composer } from './components/Composer.tsx';
 import { Transcript } from './components/Transcript.tsx';
 import { Tree } from './components/Tree.tsx';
-import { folderCwd, workspaceDirs } from './cwd.ts';
+import { folderCwd, mergeListings, workspaceDirs, type ListedSession } from './cwd.ts';
 import { clampRail, clampText, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { initialState, reducer } from './state.ts';
 
@@ -26,7 +26,7 @@ export default function App() {
   const { api, error: discoveryError } = useSidecar();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [index, setIndex] = useState<WorkspaceIndex | null>(null);
-  const [unfiled, setUnfiled] = useState<Record<string, SessionSummary[]>>({});
+  const [unfiled, setUnfiled] = useState<Record<string, ListedSession[]>>({});
   const [socketState, setSocketState] = useState<SocketState>('connecting');
   const everOpen = useRef(false);
   const [prefs, setPrefsState] = useState<Prefs>(loadPrefs);
@@ -54,10 +54,9 @@ export default function App() {
     // Unfiled covers the workspace directory and every folder directory, without repeats.
     const lists = await Promise.all(
       idx.workspaces.map(async (w) => {
-        const found = await Promise.all(workspaceDirs(w).map((d) => api.sessions(d).catch(() => [] as SessionSummary[])));
-        const seen = new Set<string>();
-        const merged = found.flat().filter((s) => (seen.has(s.sessionId) ? false : (seen.add(s.sessionId), true)));
-        return [w.id, merged] as const;
+        const dirs = workspaceDirs(w);
+        const found = await Promise.all(dirs.map((d) => api.sessions(d).catch(() => [] as SessionSummary[])));
+        return [w.id, mergeListings(dirs, found)] as const;
       }),
     );
     setUnfiled(Object.fromEntries(lists));
@@ -119,9 +118,10 @@ export default function App() {
     send({ type: 'start', key, cwd, title });
   };
 
-  const onOpenSession = async (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string) => {
+  // Where a session's store lives: the filed cwd, the directory it was listed from, or the folder's.
+  const onOpenSession = async (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string, listedIn?: string) => {
     if (!api) return;
-    const cwd = folder?.sessions.find((s) => s.sessionId === sessionId)?.cwd ?? folderCwd(ws, folder);
+    const cwd = folder?.sessions.find((s) => s.sessionId === sessionId)?.cwd ?? listedIn ?? folderCwd(ws, folder);
     const existing = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
     if (existing) {
       dispatch({ type: 'activate', key: existing.key });
@@ -183,7 +183,7 @@ export default function App() {
         onCreateWorkspace={(name, cwd) => api?.createWorkspace(name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
         onCreateFolder={(wid, name, cwd) => api?.createFolder(wid, name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
         onNewSession={onNewSession}
-        onOpenSession={(ws, folder, id, title) => void onOpenSession(ws, folder, id, title)}
+        onOpenSession={(ws, folder, id, title, listedIn) => void onOpenSession(ws, folder, id, title, listedIn)}
       />
       <div className="splitter" onMouseDown={startDrag} title="drag to resize" />
       <main className="main">
