@@ -81,7 +81,7 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     route('GET', '/health', async () => ({ ok: true, sdkVersion: config.sdkVersion })),
     route('GET', '/index', async () => store.snapshot()),
     route('POST', '/workspaces', async (_req, _p, body) => store.createWorkspace(body.name, body.cwd)),
-    route('POST', '/workspaces/:wid/folders', async (_req, p, body) => store.createFolder(p.wid, body.name)),
+    route('POST', '/workspaces/:wid/folders', async (_req, p, body) => store.createFolder(p.wid, body.name, body.cwd)),
     route('POST', '/folders/:fid/sessions', async (_req, p, body) => store.fileSession(p.fid, body.sessionId, body.cwd)),
     route('GET', '/sessions', async (_req, _p, _b, url) => listSessions({ dir: requireCwd(url.searchParams.get('cwd')) })),
     route('GET', '/sessions/:id/messages', async (_req, p, _b, url) =>
@@ -173,7 +173,8 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
         if (typeof m.cwd !== 'string' || !m.cwd.startsWith('/')) throw badRequest('cwd_required', 'absolute cwd required');
         if (m.permissionMode !== undefined && !permissionModes.includes(m.permissionMode)) throw badRequest('bad_permission_mode');
         if (m.resume !== undefined && (typeof m.resume !== 'string' || m.resume === '')) throw badRequest('bad_resume');
-        manager.start(m.key, { cwd: m.cwd, resume: m.resume, permissionMode: m.permissionMode });
+        const title = typeof m.title === 'string' && m.title.trim() !== '' ? m.title.trim() : undefined;
+        manager.start(m.key, { cwd: m.cwd, resume: m.resume, permissionMode: m.permissionMode, title });
       },
       prompt: () => {
         const m = message as Extract<ClientMessage, { type: 'prompt' }>;

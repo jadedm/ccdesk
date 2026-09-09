@@ -5,7 +5,7 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | '
 export type PermissionSuggestion = Record<string, unknown>;
 
 export type ClientMessage =
-  | { type: 'start'; key: string; cwd: string; resume?: string; permissionMode?: PermissionMode }
+  | { type: 'start'; key: string; cwd: string; resume?: string; permissionMode?: PermissionMode; title?: string }
   | { type: 'prompt'; key: string; text: string }
   | { type: 'permission'; key: string; requestId: string; behavior: 'allow' | 'deny'; always?: boolean; message?: string }
   | { type: 'interrupt'; key: string }
@@ -30,7 +30,7 @@ export type ServerMessage =
   | { type: 'error'; key: string; message: string };
 
 export type IndexSession = { sessionId: string; cwd: string };
-export type IndexFolder = { id: string; name: string; sessions: IndexSession[] };
+export type IndexFolder = { id: string; name: string; cwd?: string; sessions: IndexSession[] };
 export type IndexWorkspace = { id: string; name: string; cwd: string; folders: IndexFolder[] };
 export type WorkspaceIndex = { version: 1; workspaces: IndexWorkspace[] };
 

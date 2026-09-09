@@ -1,5 +1,6 @@
-import { memo, useEffect, useRef } from 'react';
-import Markdown from 'react-markdown';
+import { memo, useEffect, useRef, type ReactNode } from 'react';
+import Markdown, { type Components } from 'react-markdown';
+import { bionicNodes } from '../transcript/bionic.ts';
 import remarkGfm from 'remark-gfm';
 import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.ts';
 import { toolDisplayName } from '../transcript/summaries.ts';
@@ -41,14 +42,28 @@ const formatInput = (input: Record<string, unknown>): string => {
 };
 
 // Memoised: blocks are copied only when they change, so unchanged blocks skip the markdown parse.
-const BlockView = memo(({ block }: { block: Block }) => {
+// Bionic mode rewrites plain text inside paragraphs and list items; code, links and
+// emphasis keep their own rendering.
+const bionify = (children: ReactNode): ReactNode => {
+  if (typeof children === 'string') return bionicNodes(children);
+  if (Array.isArray(children)) return children.map((c, i) => (typeof c === 'string' ? <span key={i}>{bionicNodes(c)}</span> : c));
+  return children;
+};
+
+const bionicComponents: Components = {
+  p: ({ children, node: _node, ...rest }) => <p {...rest}>{bionify(children)}</p>,
+  li: ({ children, node: _node, ...rest }) => <li {...rest}>{bionify(children)}</li>,
+  td: ({ children, node: _node, ...rest }) => <td {...rest}>{bionify(children)}</td>,
+};
+
+const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) => {
   switch (block.kind) {
     case 'user':
       return <div className="user">{block.text}</div>;
     case 'text':
       return (
         <div className={block.streaming ? 'prose streaming' : 'prose'}>
-          <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={bionic ? bionicComponents : undefined}>{block.text}</Markdown>
         </div>
       );
     case 'thinking':
@@ -65,7 +80,9 @@ const BlockView = memo(({ block }: { block: Block }) => {
   }
 });
 
-export const Transcript = ({ transcript, hideThinking }: { transcript: TranscriptModel; hideThinking: boolean }) => {
+export { BlockView };
+
+export const Transcript = ({ transcript, hideThinking, bionic }: { transcript: TranscriptModel; hideThinking: boolean; bionic: boolean }) => {
   const bottom = useRef<HTMLDivElement>(null);
   const lastTurn = transcript.turns[transcript.turns.length - 1];
   const lastBlock = lastTurn?.blocks[lastTurn.blocks.length - 1];
@@ -82,7 +99,7 @@ export const Transcript = ({ transcript, hideThinking }: { transcript: Transcrip
           <section className="turn" key={turn.id} id={turn.id}>
             <div className="turn-index">{i + 1}</div>
             {turn.blocks.map((block) => (
-              <BlockView block={block} key={block.id} />
+              <BlockView block={block} bionic={bionic} key={block.id} />
             ))}
           </section>
         ))}

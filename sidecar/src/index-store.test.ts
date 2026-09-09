@@ -58,6 +58,30 @@ describe('IndexStore', () => {
     expect(JSON.parse(await readFile(path, 'utf8')).workspaces).toHaveLength(1);
   });
 
+  it('stores an optional folder directory and validates it', async () => {
+    const { store } = await fresh();
+    const ws = await store.createWorkspace('W', '/tmp/w');
+    const plain = await store.createFolder(ws.id, 'plain');
+    expect(plain.cwd).toBeUndefined();
+    const withDir = await store.createFolder(ws.id, 'proj', '/tmp/w/proj');
+    expect(withDir.cwd).toBe('/tmp/w/proj');
+    expect(await codeOf(store.createFolder(ws.id, 'bad', 'relative'))).toBe('400 bad_cwd');
+    const slashed = await store.createFolder(ws.id, 'slashed', '/tmp/w/proj2/');
+    expect(slashed.cwd).toBe('/tmp/w/proj2');
+    const empty = await store.createFolder(ws.id, 'empty', '');
+    expect(empty.cwd).toBeUndefined();
+    expect(store.snapshot().workspaces[0].folders.map((f) => f.cwd)).toEqual([undefined, '/tmp/w/proj', '/tmp/w/proj2', undefined]);
+  });
+
+  it('loads an index written before folders had directories', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ccdesk-index-'));
+    const path = join(dir, 'index.json');
+    await writeFile(path, JSON.stringify({ version: 1, workspaces: [{ id: 'w', name: 'W', cwd: '/tmp', folders: [{ id: 'f', name: 'F', sessions: [] }] }] }));
+    const store = new IndexStore(path);
+    expect(await store.load()).toBeNull();
+    expect(store.snapshot().workspaces[0].folders[0]).toEqual({ id: 'f', name: 'F', sessions: [] });
+  });
+
   it('files a session once and refuses a second filing of the same id', async () => {
     const { store } = await fresh();
     const ws = await store.createWorkspace('W', '/tmp/w');
