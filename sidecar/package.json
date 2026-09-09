@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm build && node dist/sidecar.cjs",
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/sidecar.cjs --external:@anthropic-ai/claude-agent-sdk",
+    "build": "node build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "oxlint --fix src",
     "lint:check": "oxlint src",

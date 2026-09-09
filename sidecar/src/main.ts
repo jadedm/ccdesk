@@ -1,17 +1,10 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import { startServer } from './server.ts';
 
-const sdkVersion = (): string => {
-  const require = createRequire(import.meta.url);
-  try {
-    const pkg = require('@anthropic-ai/claude-agent-sdk/package.json') as { version: string };
-    return pkg.version;
-  } catch {
-    return 'unknown';
-  }
-};
+declare const __SDK_VERSION__: string | undefined;
+
+const sdkVersion = (): string => (typeof __SDK_VERSION__ === 'string' ? __SDK_VERSION__ : 'unknown');
 
 const main = async (): Promise<void> => {
   const server = await startServer({
