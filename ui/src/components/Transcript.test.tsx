@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BlockView, Transcript } from './Transcript.tsx';
-import { visible, type View } from '../transcript/view.ts';
+import { keepAtBottom, visible, type View } from '../transcript/view.ts';
 import type { Block } from '../transcript/blocks.ts';
 
 const block = { kind: 'text' as const, id: 't1', text: 'Reading **words** with `code` and a [link](https://x.y) here.', streaming: false };
@@ -30,6 +30,15 @@ describe('BlockView', () => {
   });
 });
 
+describe('follow rule', () => {
+  it('follows the end only while running and already near the bottom', () => {
+    expect(keepAtBottom(true, 0)).toBe(true);
+    expect(keepAtBottom(true, 100)).toBe(true);
+    expect(keepAtBottom(true, 800)).toBe(false);
+    expect(keepAtBottom(false, 0)).toBe(false);
+  });
+});
+
 describe('view toggles', () => {
   const blocks: Block[] = [
     { kind: 'user', id: 'u', text: 'go' },
@@ -41,11 +50,11 @@ describe('view toggles', () => {
   const transcript = { turns: [{ id: 'turn-1', blocks }] };
 
   it('hides tool lines, system blocks and thinking according to the view', () => {
-    const shown = renderToStaticMarkup(<Transcript transcript={transcript} view={all} />);
+    const shown = renderToStaticMarkup(<Transcript transcript={transcript} view={all} sessionKey="k" following={false} />);
     expect(shown).toContain('class="tool"');
     expect(shown).toContain('class="system"');
     expect(shown).toContain('class="thinking"');
-    const hidden = renderToStaticMarkup(<Transcript transcript={transcript} view={{ hideThinking: true, showTools: false, showSystem: false, bionic: false }} />);
+    const hidden = renderToStaticMarkup(<Transcript transcript={transcript} view={{ hideThinking: true, showTools: false, showSystem: false, bionic: false }} sessionKey="k" following={false} />);
     expect(hidden).not.toContain('class="tool"');
     expect(hidden).not.toContain('class="system"');
     expect(hidden).not.toContain('class="thinking"');

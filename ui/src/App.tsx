@@ -219,7 +219,7 @@ export default function App() {
           )}
         </div>
         {active ? (
-          <Transcript transcript={active.transcript} view={view} />
+          <Transcript transcript={active.transcript} view={view} sessionKey={active.key} following={active.status === 'running' || active.status === 'starting'} />
         ) : (
           <div className="transcript"><div className="empty">Pick a session on the left, or add a workspace.</div></div>
         )}

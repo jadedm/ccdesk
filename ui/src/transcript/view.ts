@@ -9,3 +9,7 @@ export const visible = (block: Block, view: View): boolean => {
   if (block.kind === 'thinking') return !view.hideThinking;
   return true;
 };
+
+/** Follow the end of the transcript only while a turn is running and the reader is already
+ * near the bottom. A saved session opens at the top and stays wherever it was scrolled. */
+export const keepAtBottom = (following: boolean, distanceFromBottom: number): boolean => following && distanceFromBottom < 160;

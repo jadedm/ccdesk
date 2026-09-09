@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { bionicNodes } from '../transcript/bionic.ts';
 import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.ts';
 import { toolDisplayName } from '../transcript/summaries.ts';
-import { visible, type View } from '../transcript/view.ts';
+import { keepAtBottom, visible, type View } from '../transcript/view.ts';
 
 const clock = (iso?: string): string => {
   if (!iso) return '';
@@ -122,18 +122,48 @@ const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) =>
 
 export { BlockView };
 
-export const Transcript = ({ transcript, view }: { transcript: TranscriptModel; view: View }) => {
-  const bottom = useRef<HTMLDivElement>(null);
+type TranscriptProps = {
+  transcript: TranscriptModel;
+  view: View;
+  /** Identifies the session shown; a change resets the scroll position to the top. */
+  sessionKey: string;
+  /** True while a turn is running, the only time the view follows the end. */
+  following: boolean;
+};
+
+export const Transcript = ({ transcript, view, sessionKey, following }: TranscriptProps) => {
+  const scroller = useRef<HTMLDivElement>(null);
+  const distance = useRef(0);
   const lastTurn = transcript.turns[transcript.turns.length - 1];
   const lastBlock = lastTurn?.blocks[lastTurn.blocks.length - 1];
   const tail = lastBlock && 'text' in lastBlock ? lastBlock.text.length : 0;
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (el) distance.current = el.scrollHeight - el.scrollTop - el.clientHeight;
+  };
+
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'end' });
-  }, [transcript.turns.length, tail]);
+    const el = scroller.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    distance.current = el.scrollHeight - el.clientHeight;
+  }, [sessionKey]);
+
+  // A prompt the reader just sent always brings the reply into view; streaming after that
+  // follows only while they stay near the bottom.
+  const justPrompted = lastBlock?.kind === 'user';
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    if (!(following && justPrompted) && !keepAtBottom(following, distance.current)) return;
+    el.scrollTop = el.scrollHeight;
+    distance.current = 0;
+  }, [transcript.turns.length, tail, following, justPrompted]);
 
   if (transcript.turns.length === 0) return <div className="transcript"><div className="empty">No messages yet.</div></div>;
   return (
-    <div className="transcript">
+    <div className="transcript" ref={scroller} onScroll={onScroll}>
       <div className="reading">
         {transcript.turns.map((turn, i) => (
           <section className="turn" key={turn.id} id={turn.id}>
@@ -143,7 +173,6 @@ export const Transcript = ({ transcript, view }: { transcript: TranscriptModel; 
             ))}
           </section>
         ))}
-        <div ref={bottom} />
       </div>
     </div>
   );
