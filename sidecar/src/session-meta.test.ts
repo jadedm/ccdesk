@@ -24,7 +24,9 @@ const fixture = [
   line({ type: 'last-prompt' }),
 ].join('\n') + '\n';
 
-const later = async (file: string) => utimes(file, new Date(), new Date(Date.now() + 5000));
+let bump = 0;
+/** Each call moves the mtime further ahead, so two calls never share a filesystem tick. */
+const later = async (file: string) => utimes(file, new Date(), new Date(Date.now() + (bump += 5000)));
 
 describe('session metadata', () => {
   it('counts conversation records, takes the first model, and caches by mtime', async () => {
@@ -51,8 +53,8 @@ describe('session metadata', () => {
     await later(file);
     expect((await cache.read(file))?.messages).toBe(8);
     expect(cache.bytesRead - before).toBe(Buffer.byteLength(extra));
+    // Same mtime as the read above, different size: the size must break the cache.
     await appendFile(file, 'tent":"five"}}\n');
-    await later(file);
     expect((await cache.read(file))?.messages).toBe(9);
   });
 
