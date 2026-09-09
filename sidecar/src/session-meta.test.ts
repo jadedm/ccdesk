@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { realpathSync } from 'node:fs';
 import { mkdtemp, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,5 +44,7 @@ describe('session metadata', () => {
     expect(projectSlug('/Users/x/Documents/work/manishj/test')).toBe('-Users-x-Documents-work-manishj-test');
     expect(projectSlug('/a/.claude/worktrees/b')).toBe('-a--claude-worktrees-b');
     expect(sessionFile('/w', 'abc', '/home/u')).toBe('/home/u/.claude/projects/-w/abc.jsonl');
+    // A symlinked directory resolves to its real path before slugging, as the CLI does.
+    expect(sessionFile('/tmp', 'abc', '/home/u')).toBe(`/home/u/.claude/projects/${projectSlug(realpathSync('/tmp'))}/abc.jsonl`);
   });
 });
