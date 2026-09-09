@@ -40,7 +40,11 @@ type StreamEvent =
 let counter = 0;
 const nextId = (prefix: string): string => `${prefix}-${++counter}`;
 
-const clone = (t: Transcript): Transcript => ({ ...t, turns: t.turns.map((turn) => ({ ...turn, blocks: [...turn.blocks] })) });
+// Every block is copied, not only the arrays. The appliers below mutate blocks in place on
+// the copy, and a shared block object would leak those mutations into the previous state.
+// React strict mode runs reducers twice on the same input, which turned that leak into a
+// duplicated final message.
+const clone = (t: Transcript): Transcript => ({ ...t, turns: t.turns.map((turn) => ({ ...turn, blocks: turn.blocks.map((b) => ({ ...b })) })) });
 
 const currentTurn = (t: Transcript): Turn => {
   const last = t.turns[t.turns.length - 1];

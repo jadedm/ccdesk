@@ -60,6 +60,22 @@ describe('reduce: history and live agree', () => {
     expect(full.model).toBe('claude-test');
   });
 
+  it('leaves the previous state untouched, so applying a record twice gives the same result', () => {
+    const before = live.slice(0, 8).reduce((acc, r) => reduceRecord(acc, r), emptyTranscript());
+    const frozen = JSON.stringify(before);
+    const once = reduceRecord(before, live[8]);
+    const twice = reduceRecord(before, live[8]);
+    expect(JSON.stringify(before)).toBe(frozen);
+    expect(once.turns[0].blocks.filter((b) => b.kind === 'text')).toHaveLength(1);
+    expect(twice.turns[0].blocks.filter((b) => b.kind === 'text')).toHaveLength(1);
+    const delta = live[7];
+    const d1 = reduceRecord(before, delta);
+    const d2 = reduceRecord(before, delta);
+    const textOf = (t: typeof before) => t.turns[0].blocks.find((b) => b.kind === 'text');
+    expect(textOf(d1)).toEqual(textOf(d2));
+    expect(textOf(d1)?.text).toBe('Listing now.now.');
+  });
+
   it('starts a new turn per user prompt and reports failed results', () => {
     const t = reduceAll([user('one'), assistant([{ type: 'text', text: 'a' }]), user('two'), { type: 'result', is_error: true, result: 'boom' }]);
     expect(t.turns).toHaveLength(2);

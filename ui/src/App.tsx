@@ -77,7 +77,7 @@ export default function App() {
     const session = stateRef.current.sessions[key];
     if (!session || session.status !== 'history' || !session.sessionId) return key;
     const liveKey = newKey();
-    dispatch({ type: 'new_live', key: liveKey, cwd: session.cwd, folderId: session.folderId, title: session.title, resume: session.sessionId });
+    dispatch({ type: 'new_live', key: liveKey, cwd: session.cwd, folderId: session.folderId, title: session.title, resume: session.sessionId, fromKey: key });
     send({ type: 'start', key: liveKey, cwd: session.cwd, resume: session.sessionId });
     return liveKey;
   }, [send]);

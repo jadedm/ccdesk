@@ -36,6 +36,28 @@ describe('sidecar http', () => {
     expect((await fetch(base + '/health')).status).toBe(401);
   });
 
+  it('answers a CORS preflight without a token and stamps every response with allow-origin', async () => {
+    const preflight = await fetch(base + '/index', {
+      method: 'OPTIONS',
+      headers: { origin: 'http://localhost:1420', 'access-control-request-method': 'GET', 'access-control-request-headers': 'authorization' },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('*');
+    expect(preflight.headers.get('access-control-allow-headers')).toContain('authorization');
+    const real = await call('GET', '/health');
+    expect(real.headers.get('access-control-allow-origin')).toBe('*');
+    const denied = await fetch(base + '/health');
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('uses a fixed token and port when configured, for dev and smoke runs', async () => {
+    const fixed = await startServer({ indexPath: join(emptyDir, 'i.json'), sdkVersion: 'test', token: 'fixed-token' });
+    const res = await fetch(`http://127.0.0.1:${fixed.port}/health`, { headers: { authorization: 'Bearer fixed-token' } });
+    expect(res.status).toBe(200);
+    await fixed.close();
+  });
+
   it('rejects a websocket upgrade without the token', async () => {
     const outcome = await new Promise<string>((resolve) => {
       const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);

@@ -23,7 +23,7 @@ export type State = {
 
 export type Action =
   | { type: 'open_history'; key: string; sessionId: string; cwd: string; folderId: string | null; title: string; records: unknown[] }
-  | { type: 'new_live'; key: string; cwd: string; folderId: string | null; title: string; resume: string | null }
+  | { type: 'new_live'; key: string; cwd: string; folderId: string | null; title: string; resume: string | null; fromKey?: string }
   | { type: 'server'; message: ServerMessage }
   | { type: 'local_prompt'; key: string; text: string }
   | { type: 'set_status'; key: string; status: SessionStatus }
@@ -61,7 +61,11 @@ export const reducer = (state: State, action: Action): State => {
       return { sessions: { ...state.sessions, [action.key]: session }, activeKey: action.key };
     }
     case 'new_live': {
-      const existing = state.sessions[action.key];
+      // Resuming a saved session carries its transcript over and retires the history view,
+      // so the tree and the transcript keep pointing at one entry per session id.
+      const existing = action.fromKey ? state.sessions[action.fromKey] : undefined;
+      const sessions = { ...state.sessions };
+      if (action.fromKey) delete sessions[action.fromKey];
       const session: SessionView = {
         key: action.key,
         sessionId: action.resume,
@@ -73,7 +77,7 @@ export const reducer = (state: State, action: Action): State => {
         permission: null,
         error: null,
       };
-      return { sessions: { ...state.sessions, [action.key]: session }, activeKey: action.key };
+      return { sessions: { ...sessions, [action.key]: session }, activeKey: action.key };
     }
     case 'server': {
       const session = state.sessions[action.message.key];

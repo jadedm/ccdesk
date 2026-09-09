@@ -12,6 +12,7 @@ const main = async (): Promise<void> => {
     sdkVersion: sdkVersion(),
     claudeBinary: process.env.CCDESK_CLAUDE_BIN,
     port: process.env.CCDESK_PORT ? Number(process.env.CCDESK_PORT) : undefined,
+    token: process.env.CCDESK_TOKEN || undefined,
   });
   process.stdout.write(JSON.stringify({ port: server.port, token: server.token }) + '\n');
   const shutdown = (): void => {

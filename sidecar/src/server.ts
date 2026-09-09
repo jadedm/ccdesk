@@ -7,7 +7,7 @@ import { HttpError, badRequest, notFound } from './errors.ts';
 import { IndexStore } from './index-store.ts';
 import { SessionManager } from './sessions.ts';
 
-export type ServerConfig = { indexPath: string; sdkVersion: string; claudeBinary?: string; port?: number };
+export type ServerConfig = { indexPath: string; sdkVersion: string; claudeBinary?: string; port?: number; token?: string };
 
 type Params = Record<string, string>;
 type Handler = (req: IncomingMessage, params: Params, body: Record<string, unknown>, url: URL) => Promise<unknown>;
@@ -37,8 +37,18 @@ const requireCwd = (value: string | null): string => {
   return value;
 };
 
+// The UI runs on another origin: the Vite dev server in a browser, or the Tauri webview
+// (tauri://localhost on macOS). The bearer token is the access control, so any origin may
+// call; a page that does not hold the token gets 401 like everyone else.
+const corsHeaders = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'access-control-max-age': '600',
+};
+
 const sendJson = (res: ServerResponse, status: number, body: unknown): void => {
-  res.writeHead(status, { 'content-type': 'application/json' });
+  res.writeHead(status, { 'content-type': 'application/json', ...corsHeaders });
   res.end(JSON.stringify(body));
 };
 
@@ -52,7 +62,7 @@ const errorBody = (error: unknown): { status: number; body: { error: string; mes
 export type RunningServer = SidecarInfo & { close: () => Promise<void> };
 
 export const startServer = async (config: ServerConfig): Promise<RunningServer> => {
-  const token = randomBytes(24).toString('hex');
+  const token = config.token ?? randomBytes(24).toString('hex');
   const store = new IndexStore(config.indexPath);
   await store.load();
 
@@ -82,6 +92,11 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
 
   const dispatch = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, corsHeaders);
+      res.end();
+      return;
+    }
     if (!authorized(req, url)) return sendJson(res, 401, { error: 'unauthorized' });
     const match = routes
       .map((r) => ({ r, m: req.method === r.method ? url.pathname.match(r.pattern) : null }))
