@@ -22,6 +22,6 @@ describe('preferences', () => {
 describe('grid columns', () => {
   it('drops the rail and splitter when collapsed', () => {
     expect(gridColumns(false, 320)).toBe('320px 6px 1fr');
-    expect(gridColumns(true, 320)).toBe('0 0 1fr');
+    expect(gridColumns(true, 320)).toBe('1fr');
   });
 });

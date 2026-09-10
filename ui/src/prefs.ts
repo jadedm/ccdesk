@@ -55,5 +55,7 @@ export const savePrefs = (prefs: Prefs): void => {
 export const clampRail = (width: number): number => clamp(width, railBounds.min, railBounds.max);
 export const clampText = (size: number): number => clamp(size, textBounds.min, textBounds.max);
 
-/** The app grid's columns: rail, splitter and main, or main alone when the rail is collapsed. */
-export const gridColumns = (collapsed: boolean, railWidth: number): string => (collapsed ? '0 0 1fr' : `${railWidth}px 6px 1fr`);
+/** The app grid's columns: rail, splitter and main, or main alone when the rail is collapsed.
+ * Collapsed must be a single column: the hidden rail and splitter are not grid items, so main
+ * is auto-placed first and a leading zero-width column would swallow it. */
+export const gridColumns = (collapsed: boolean, railWidth: number): string => (collapsed ? '1fr' : `${railWidth}px 6px 1fr`);
