@@ -6,12 +6,12 @@ import type { Block } from '../transcript/blocks.ts';
 
 const block = { kind: 'text' as const, id: 't1', text: 'Reading **words** with `code` and a [link](https://x.y) here.', streaming: false };
 
-const all: View = { hideThinking: false, showTools: true, showSystem: true, bionic: false };
+const all: View = { hideThinking: false, showTools: true, showSystem: true, bionic: false, theme: 'light' };
 
 describe('BlockView', () => {
   it('bolds word prefixes in prose only when bionic is on, leaving code and links alone', () => {
-    const off = renderToStaticMarkup(<BlockView block={block} bionic={false} />);
-    const on = renderToStaticMarkup(<BlockView block={block} bionic={true} />);
+    const off = renderToStaticMarkup(<BlockView block={block} bionic={false} theme="light" />);
+    const on = renderToStaticMarkup(<BlockView block={block} bionic={true} theme="light" />);
     expect(off).not.toContain('class="bio"');
     expect(on).toContain('<b class="bio">Rea</b>ding');
     expect(on).toContain('<code>code</code>');
@@ -20,10 +20,10 @@ describe('BlockView', () => {
   });
 
   it('labels a user turn with who and when', () => {
-    const user = renderToStaticMarkup(<BlockView block={{ kind: 'user', id: 'u', text: 'hi', at: '2026-09-09T10:05:00Z' }} bionic={false} />);
+    const user = renderToStaticMarkup(<BlockView block={{ kind: 'user', id: 'u', text: 'hi', at: '2026-09-09T10:05:00Z' }} bionic={false} theme="light" />);
     expect(user).toContain('class="who">you<');
     expect(user).toMatch(/class="time">\d{1,2}:\d{2}/);
-    const unstamped = renderToStaticMarkup(<BlockView block={{ kind: 'user', id: 'u', text: 'hi' }} bionic={false} />);
+    const unstamped = renderToStaticMarkup(<BlockView block={{ kind: 'user', id: 'u', text: 'hi' }} bionic={false} theme="light" />);
     expect(unstamped).not.toContain('class="time"');
   });
 
@@ -33,7 +33,7 @@ describe('BlockView', () => {
       { kind: 'thinking' as const, id: 'th', text: 'hm', streaming: false },
       { ...block },
     ] };
-    const html = renderToStaticMarkup(<Transcript transcript={{ turns: [turn] }} view={{ hideThinking: true, showTools: true, showSystem: false, bionic: false }} sessionKey="k" following={false} />);
+    const html = renderToStaticMarkup(<Transcript transcript={{ turns: [turn] }} view={{ hideThinking: true, showTools: true, showSystem: false, bionic: false, theme: 'light' }} sessionKey="k" following={false} />);
     const label = html.indexOf('class="who">claude<');
     expect(label).toBeGreaterThan(-1);
     expect(html.indexOf('class="prose"')).toBeGreaterThan(label);
@@ -76,11 +76,37 @@ describe('view toggles', () => {
     expect(shown).toContain('class="tool"');
     expect(shown).toContain('class="system"');
     expect(shown).toContain('class="thinking"');
-    const hidden = renderToStaticMarkup(<Transcript transcript={transcript} view={{ hideThinking: true, showTools: false, showSystem: false, bionic: false }} sessionKey="k" following={false} />);
+    const hidden = renderToStaticMarkup(<Transcript transcript={transcript} view={{ hideThinking: true, showTools: false, showSystem: false, bionic: false, theme: 'light' }} sessionKey="k" following={false} />);
     expect(hidden).not.toContain('class="tool"');
     expect(hidden).not.toContain('class="system"');
     expect(hidden).not.toContain('class="thinking"');
     expect(hidden).toContain('done');
     expect(blocks.filter((b) => visible(b, all))).toHaveLength(5);
+  });
+});
+
+// A diagram is not code. Markdown wraps every fence in a pre, and a diagram left inside that
+// wrapper is drawn in the code-block box, with a div inside a pre and the source pre nested inside
+// that. Measured in the app before the fix: the diagram's parent was a pre with the code-block
+// padding, border and background, and one pre sat inside another.
+describe('a mermaid fence leaves its pre behind', () => {
+  const withFence = (lang: string) => ({
+    kind: 'text' as const,
+    id: 'd1',
+    text: `Before\n\n\`\`\`${lang}\ngraph TD\n  A[One] --> B[Two]\n\`\`\`\n\nAfter`,
+    streaming: false,
+  });
+
+  it('renders the diagram outside any pre', () => {
+    const html = renderToStaticMarkup(<BlockView block={withFence('mermaid')} bionic={false} theme="light" />);
+    expect(html).toContain('class="diagram"');
+    expect(html).not.toMatch(/<pre[^>]*>\s*<div class="diagram"/);
+    expect(html).not.toContain('<pre><pre');
+  });
+
+  it('keeps every other fence in its pre', () => {
+    const html = renderToStaticMarkup(<BlockView block={withFence('ts')} bionic={false} theme="light" />);
+    expect(html).not.toContain('class="diagram"');
+    expect(html).toMatch(/<pre[^>]*>\s*<code class="language-ts"/);
   });
 });

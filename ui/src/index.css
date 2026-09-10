@@ -196,6 +196,15 @@ details.tool .body { padding: 6px 10px 8px; }
 details.tool .body h4 { margin: 8px 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); font-weight: 500; }
 details.tool pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--code-bg); border: 1px solid var(--border); padding: 10px 12px; border-radius: 6px; max-height: 480px; overflow: auto; font-size: 11.5px; line-height: 1.6; color: var(--ink2); }
 
+/* Diagrams: sized to the reading column, scrolling sideways rather than widening it */
+.diagram { margin: 0 0 1em; }
+.diagram-svg { overflow-x: auto; padding: 8px 0; }
+.diagram-svg svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.diagram-source { margin: 0; font: 400 0.82em/1.6 var(--mono); background: var(--code-bg); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px; overflow-x: auto; color: var(--ink2); white-space: pre; }
+.diagram-error { font: 400 11px/1.5 var(--mono); color: var(--error); padding: 6px 2px; white-space: normal; }
+.diagram-toggle { border: 0; background: none; color: var(--muted); font: 400 10.5px var(--mono); padding: 4px 0; cursor: pointer; text-decoration: underline; }
+.diagram-toggle:hover { color: var(--accent); }
+
 /* thinking is Claude's inner voice: readable serif, italic, dimmed */
 details.thinking { font: 400 11px var(--mono); color: var(--faint); margin: 4px 0 10px; }
 details.thinking summary { cursor: pointer; list-style: none; }
