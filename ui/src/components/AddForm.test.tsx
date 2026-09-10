@@ -32,7 +32,9 @@ describe('AddForm', () => {
     expect(session).toContain('Claude Code will title the session');
   });
 
-  it('does not disable its submit button', () => {
-    expect(render('workspace')).not.toContain('disabled');
+  it('offers a Create button that is never disabled, since the form says why instead', () => {
+    const html = render('workspace');
+    expect(html).toMatch(/<button type="submit"[^>]*>Create<\/button>/);
+    expect(html).not.toMatch(/<button[^>]*disabled/);
   });
 });

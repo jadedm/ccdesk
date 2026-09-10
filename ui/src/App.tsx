@@ -172,13 +172,11 @@ export default function App() {
     };
     const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName ?? '');
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'Tab') {
-        e.preventDefault();
-        const next = cycle(stateRef.current.open, stateRef.current.activeKey, e.shiftKey ? -1 : 1);
-        if (!next) return;
-        dispatch({ type: 'activate', key: next });
-        return;
-      }
+      const cycling = e.ctrlKey && e.key === 'Tab';
+      const next = cycling ? cycle(stateRef.current.open, stateRef.current.activeKey, e.shiftKey ? -1 : 1) : null;
+      if (cycling) e.preventDefault();
+      if (next) dispatch({ type: 'activate', key: next });
+      if (cycling) return;
       const meta = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
       if (meta && e.key === 'b' && !typing()) {
         e.preventDefault();
@@ -306,8 +304,16 @@ export default function App() {
         unfiled={unfiled}
         sessions={state.sessions}
         activeKey={state.activeKey}
-        onCreateWorkspace={(name, cwd) => api?.createWorkspace(name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
-        onCreateFolder={(wid, name, cwd) => api?.createFolder(wid, name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
+        onCreateWorkspace={async (name, cwd) => {
+          if (!api) throw new Error('sidecar not connected');
+          await api.createWorkspace(name, cwd);
+          await refreshIndex();
+        }}
+        onCreateFolder={async (wid, name, cwd) => {
+          if (!api) throw new Error('sidecar not connected');
+          await api.createFolder(wid, name, cwd);
+          await refreshIndex();
+        }}
         onNewSession={onNewSession}
         onOpenSession={(ws, folder, id, title, listedIn) => void onOpenSession(ws, folder, id, title, listedIn)}
       />
