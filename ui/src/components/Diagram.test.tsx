@@ -18,6 +18,12 @@ describe('Diagram', () => {
     const user = userEvent.setup();
     const { container } = render(<Diagram source={valid} theme="light" streaming={false} />);
     await waitFor(() => expect(container.querySelector('.diagram-svg svg')).toBeTruthy(), { timeout: 15000 });
+    // Look at what mermaid drew, not merely that an svg tag arrived: replacing the render with a
+    // constant `<svg></svg>` passed this case until these three assertions were added.
+    const svg = container.querySelector('.diagram-svg svg') as SVGSVGElement;
+    expect(svg.textContent).toContain('Start');
+    expect(svg.textContent).toContain('Finish');
+    expect(svg.querySelectorAll('path, line, polygon').length).toBeGreaterThan(0);
     expect(container.querySelector('.diagram-source')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Show source' }));
     expect(container.querySelector('.diagram-source')?.textContent).toBe(valid);
