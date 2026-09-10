@@ -11,7 +11,7 @@ describe('Tabs', () => {
   it('renders one tab per open key with its title, the active mark and a close button', () => {
     const sessions = { a: view('a', 'Alpha', 'history'), b: view('b', 'Beta', 'running') };
     const html = renderToStaticMarkup(<Tabs open={['a', 'b']} sessions={sessions} activeKey="b" onActivate={() => {}} onClose={() => {}} />);
-    expect(html.match(/role="tab"/g)?.length).toBe(2);
+    expect(html.match(/<button[^>]*role="tab"/g)?.length).toBe(2);
     expect(html).toContain('Alpha');
     expect(html).toContain('class="tab active"');
     expect(html.match(/class="tab-close"/g)?.length).toBe(2);

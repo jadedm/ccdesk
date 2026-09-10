@@ -20,10 +20,12 @@ export const Tabs = ({ open, sessions, activeKey, onActivate, onClose }: Props) 
         if (!s) return null;
         const active = key === activeKey;
         return (
-          <div key={key} role="tab" aria-selected={active} className={active ? 'tab active' : 'tab'} onClick={() => onActivate(key)} title={s.title}>
-            <span className={dotClass(s)} />
-            <span className="tab-title">{s.title}</span>
-            <button className="tab-close" title="close" aria-label={`close ${s.title}`} onClick={(e) => { e.stopPropagation(); onClose(key); }}>×</button>
+          <div key={key} className={active ? 'tab active' : 'tab'} title={s.title}>
+            <button type="button" role="tab" aria-selected={active} className="tab-select" onClick={() => onActivate(key)}>
+              <span className={dotClass(s)} />
+              <span className="tab-title">{s.title}</span>
+            </button>
+            <button type="button" className="tab-close" title="close" aria-label={`close ${s.title}`} onClick={() => onClose(key)}>×</button>
           </div>
         );
       })}

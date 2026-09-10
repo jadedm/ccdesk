@@ -21,3 +21,13 @@ export const cycle = (open: string[], active: string | null, direction: 1 | -1):
   if (index === -1) return open[0];
   return open[(index + direction + open.length) % open.length];
 };
+
+/** What closing a session entails. A live one is stopped on the sidecar, a running one only
+ * after the user confirms; a saved one just leaves memory. */
+export type CloseDecision = { close: boolean; stop: boolean };
+
+export const closeDecision = (status: string, confirm: () => boolean): CloseDecision => {
+  const running = status === 'running' || status === 'starting';
+  if (running && !confirm()) return { close: false, stop: false };
+  return { close: true, stop: status !== 'history' };
+};

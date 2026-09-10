@@ -25,7 +25,9 @@ describe('state: resuming a saved session', () => {
     let s = reducer(initialState, { type: 'open_history', key: 'hist-a', sessionId: 'a', cwd: '/w', folderId: null, title: 'A', records: [] });
     s = reducer(s, { type: 'new_live', key: 'live-b', cwd: '/w', folderId: null, title: 'B', resume: null });
     s = reducer(s, { type: 'open_history', key: 'hist-c', sessionId: 'c', cwd: '/w', folderId: null, title: 'C', records: [] });
+    s = reducer(s, { type: 'open_history', key: 'hist-a', sessionId: 'a', cwd: '/w', folderId: null, title: 'A', records: [] });
     expect(s.open).toEqual(['hist-a', 'live-b', 'hist-c']);
+    expect(s.activeKey).toBe('hist-a');
     s = reducer(s, { type: 'activate', key: 'hist-a' });
     s = reducer(s, { type: 'new_live', key: 'live-a', cwd: '/w', folderId: null, title: 'A', resume: 'a', fromKey: 'hist-a' });
     expect(s.open).toEqual(['live-a', 'live-b', 'hist-c']);

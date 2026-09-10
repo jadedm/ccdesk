@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycle, withClosed, withOpened } from './tabs.ts';
+import { closeDecision, cycle, withClosed, withOpened } from './tabs.ts';
 
 describe('tabs', () => {
   it('keeps open order and never duplicates', () => {
@@ -29,5 +29,18 @@ describe('tabs', () => {
     expect(cycle(['A'], 'A', 1)).toBe('A');
     expect(cycle([], null, 1)).toBeNull();
     expect(cycle(['A', 'B'], null, 1)).toBe('A');
+  });
+});
+
+describe('close decision', () => {
+  it('stops live sessions, asks first while running, and leaves saved ones alone', () => {
+    const yes = () => true;
+    const no = () => false;
+    expect(closeDecision('history', yes)).toEqual({ close: true, stop: false });
+    expect(closeDecision('idle', no)).toEqual({ close: true, stop: true });
+    expect(closeDecision('ended', no)).toEqual({ close: true, stop: true });
+    expect(closeDecision('running', no)).toEqual({ close: false, stop: false });
+    expect(closeDecision('running', yes)).toEqual({ close: true, stop: true });
+    expect(closeDecision('starting', no)).toEqual({ close: false, stop: false });
   });
 });
