@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { renderDiagram, type Theme } from '../transcript/mermaid.ts';
 
 /** A mermaid diagram, with its source one click away. While a reply is still arriving the
@@ -9,15 +9,15 @@ export const Diagram = ({ source, theme, streaming }: { source: string; theme: T
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSource, setShowSource] = useState(false);
-  const latest = useRef('');
 
   useEffect(() => {
     // A diagram that is still being typed is not worth rendering on every keystroke.
     if (streaming) return;
-    latest.current = source;
+    // Renders are queued, so a result can arrive long after its source was replaced. The cleanup
+    // flag is what discards those.
     let current = true;
     void renderDiagram(source, theme).then((result) => {
-      if (!current || latest.current !== source) return;
+      if (!current) return;
       if ('svg' in result) {
         setSvg(result.svg);
         setError(null);

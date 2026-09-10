@@ -58,6 +58,23 @@ export const loadMermaid = async (theme: Theme) => {
 export const resetMermaid = (): void => {
   loading = null;
   configuredFor = null;
+  counter = 0;
+};
+
+// Mermaid keeps its parsed directives and its resolved configuration in module-level state, and
+// clears them at the start of every render. Two renders in flight therefore share one
+// configuration, and which of them wins depends on how they interleave. Diagrams are rendered one
+// after another for that reason. It also keeps a reply full of diagrams from starting dozens of
+// layouts at once, each of which puts a real element in the document and forces layout.
+let queue: Promise<unknown> = Promise.resolve();
+
+const oneAtATime = <T,>(work: () => Promise<T>): Promise<T> => {
+  const run = queue.then(work, work);
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 };
 
 export type DiagramResult = { svg: string } | { error: string };
@@ -69,6 +86,10 @@ let counter = 0;
 export const renderDiagram = async (source: string, theme: Theme): Promise<DiagramResult> => {
   const text = source.trim();
   if (text === '') return { error: 'Empty diagram.' };
+  return oneAtATime(() => renderOne(text, theme));
+};
+
+const renderOne = async (text: string, theme: Theme): Promise<DiagramResult> => {
   const id = `ccdesk-diagram-${++counter}`;
   try {
     const mermaid = await loadMermaid(theme);
