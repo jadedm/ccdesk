@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 export type MenuAction = { label: string; onPick: () => void; danger?: boolean };
 
@@ -6,7 +6,9 @@ export type MenuAction = { label: string; onPick: () => void; danger?: boolean }
  * trigger's box, because the rail and each row clip their overflow and an absolutely
  * positioned popup inside them is cut off. Focus moves into the list and returns to the
  * trigger on Escape. */
-export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: string }) => {
+export type RowMenuHandle = { openAt: (x: number, y: number) => void };
+
+export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label: string }>(({ actions, label }, handle) => {
   const [at, setAt] = useState<{ top: number; right: number; above: boolean } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -55,6 +57,14 @@ export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: stri
     };
   }, [isOpen, place]);
 
+  // A right-click anywhere on the row opens the same list where the pointer is.
+  useImperativeHandle(handle, () => ({
+    openAt: (x: number, y: number) => {
+      const height = 12 + actions.length * 27;
+      setAt({ top: Math.round(Math.min(y, Math.max(4, window.innerHeight - height - 4))), right: Math.round(Math.max(4, window.innerWidth - x)), above: false });
+    },
+  }), [actions.length]);
+
   if (actions.length === 0) return null;
   return (
     <span className="rowmenu" onClick={(e) => e.stopPropagation()}>
@@ -68,4 +78,6 @@ export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: stri
       )}
     </span>
   );
-};
+});
+
+RowMenu.displayName = 'RowMenu';

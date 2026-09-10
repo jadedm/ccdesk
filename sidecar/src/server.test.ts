@@ -177,6 +177,25 @@ describe('sidecar http', () => {
     expect((await call('DELETE', `/workspaces/${ws.id}`)).status).toBe(404);
   });
 
+  it('reports a directory, and moves a workspace or folder to another one', async () => {
+    const missing = await (await call('GET', `/directory?path=${encodeURIComponent(join(emptyDir, 'nope'))}`)).json();
+    expect(missing).toMatchObject({ exists: false, isDirectory: false, sessions: 0 });
+    const real = await (await call('GET', `/directory?path=${encodeURIComponent(emptyDir)}`)).json();
+    expect(real).toMatchObject({ exists: true, isDirectory: true });
+    expect((await call('GET', '/directory?path=relative')).status).toBe(400);
+
+    const ws = await (await call('POST', '/workspaces', { name: 'Moves', cwd: emptyDir })).json();
+    const folder = await (await call('POST', `/workspaces/${ws.id}/folders`, { name: 'f' })).json();
+    const other = await mkdtemp(join(tmpdir(), 'ccdesk-other-'));
+    expect((await (await call('PATCH', `/workspaces/${ws.id}`, { cwd: other })).json()).cwd).toBe(other);
+    expect((await (await call('PATCH', `/folders/${folder.id}`, { cwd: other })).json()).cwd).toBe(other);
+    expect((await (await call('PATCH', `/folders/${folder.id}`, { cwd: null })).json()).cwd).toBeUndefined();
+    expect((await call('PATCH', `/workspaces/${ws.id}`, { cwd: 'relative' })).status).toBe(400);
+    expect((await call('PATCH', '/workspaces/nope', { cwd: other })).status).toBe(404);
+    // Renaming still works when no cwd is sent.
+    expect((await (await call('PATCH', `/workspaces/${ws.id}`, { name: 'Renamed' })).json()).name).toBe('Renamed');
+  });
+
   it('search rejects short queries and scans the index directories', async () => {
     expect((await call('GET', '/search?q=a')).status).toBe(400);
     const res = await call('GET', '/search?q=zzqq');

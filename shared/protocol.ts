@@ -62,3 +62,6 @@ export type SearchHit = {
 };
 
 export type SearchResponse = { results: SearchHit[]; scanned: number; skipped: number; truncated: boolean };
+
+/** What the app can tell the user about a directory before they commit to it. */
+export type DirectoryReport = { path: string; exists: boolean; isDirectory: boolean; sessions: number };

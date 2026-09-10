@@ -8,6 +8,7 @@ import { IndexStore } from './index-store.ts';
 import { SessionManager } from './sessions.ts';
 import { SessionMetaCache, sessionFile } from './session-meta.ts';
 import { MAX_RESULTS, matchSummary, searchFile, sortHits } from './search.ts';
+import { describeDirectory } from './directory.ts';
 import type { SearchHit, SearchResponse } from '../../shared/protocol.ts';
 
 export type ServerConfig = { indexPath: string; sdkVersion: string; claudeBinary?: string; port?: number; token?: string };
@@ -87,12 +88,17 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     route('POST', '/workspaces', async (_req, _p, body) => store.createWorkspace(body.name, body.cwd)),
     route('POST', '/workspaces/:wid/folders', async (_req, p, body) => store.createFolder(p.wid, body.name, body.cwd)),
     route('POST', '/folders/:fid/sessions', async (_req, p, body) => store.fileSession(p.fid, body.sessionId, body.cwd)),
-    route('PATCH', '/workspaces/:wid', async (_req, p, body) => store.renameWorkspace(p.wid, body.name)),
+    route('GET', '/directory', async (_req, _p, _b, url) => describeDirectory(requireCwd(url.searchParams.get('path')))),
+    route('PATCH', '/workspaces/:wid', async (_req, p, body) =>
+      body.cwd === undefined ? store.renameWorkspace(p.wid, body.name) : store.setWorkspaceCwd(p.wid, body.cwd),
+    ),
     route('DELETE', '/workspaces/:wid', async (_req, p) => {
       await store.deleteWorkspace(p.wid);
       return { ok: true };
     }),
-    route('PATCH', '/folders/:fid', async (_req, p, body) => store.renameFolder(p.fid, body.name)),
+    route('PATCH', '/folders/:fid', async (_req, p, body) =>
+      body.cwd === undefined ? store.renameFolder(p.fid, body.name) : store.setFolderCwd(p.fid, body.cwd),
+    ),
     route('DELETE', '/folders/:fid', async (_req, p) => {
       await store.deleteFolder(p.fid);
       return { ok: true };
