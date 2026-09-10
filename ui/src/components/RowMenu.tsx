@@ -64,7 +64,15 @@ export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label:
   useImperativeHandle(handle, () => ({
     openAt: (x: number, y: number) => {
       const height = 12 + actions.length * 27;
-      setAt({ top: Math.round(Math.min(y, Math.max(4, window.innerHeight - height - 4))), right: Math.round(Math.max(4, window.innerWidth - x)), above: false });
+      // The list hangs from its right edge, so near the left edge it must be pushed right or
+      // it opens off-screen. 170px covers the 150px minimum plus its padding and border.
+      const width = 170;
+      const right = Math.min(Math.max(4, window.innerWidth - x), window.innerWidth - width - 4);
+      setAt({
+        top: Math.round(Math.max(4, Math.min(y, window.innerHeight - height - 4))),
+        right: Math.round(Math.max(4, right)),
+        above: false,
+      });
     },
   }), [actions.length]);
 

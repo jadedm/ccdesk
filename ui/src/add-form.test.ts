@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { directoryNote, hasContent, reasonNotReady, rulesFor } from './add-form.ts';
+import { basename, blockingReason, directoryNote, effectiveName, hasContent, reasonNotReady, rulesFor } from './add-form.ts';
 
 describe('add form rules', () => {
   it('says what is missing rather than staying silent', () => {
     const ws = rulesFor('workspace');
-    expect(reasonNotReady(ws, { name: '', cwd: '' })).toBe('Give it a name.');
+    // The directory is asked for first: it is the real choice, and it supplies the name.
+    expect(reasonNotReady(ws, { name: '', cwd: '' })).toBe('Choose the directory this workspace covers.');
     expect(reasonNotReady(ws, { name: 'Work', cwd: '' })).toBe('Choose the directory this workspace covers.');
+    // Raw, the name is still required; blockingReason is what lets the directory supply it.
+    expect(reasonNotReady(ws, { name: '', cwd: '/abs' })).toBe('Give it a name.');
     expect(reasonNotReady(ws, { name: 'Work', cwd: 'relative/path' })).toContain('full path');
     expect(reasonNotReady(ws, { name: 'Work', cwd: '/abs' })).toBeNull();
   });
@@ -32,5 +35,37 @@ describe('add form rules', () => {
     expect(hasContent({ name: '  ', cwd: '' })).toBe(false);
     expect(hasContent({ name: 'x', cwd: '' })).toBe(true);
     expect(hasContent({ name: '', cwd: '/a' })).toBe(true);
+  });
+});
+
+describe('name from the directory', () => {
+  it('takes the last segment, so picking a directory is usually the whole job', () => {
+    expect(basename('/Users/ada/code/widgets')).toBe('widgets');
+    expect(basename('/Users/ada/code/widgets/')).toBe('widgets');
+    expect(basename('/')).toBe('');
+    expect(basename('')).toBe('');
+    expect(effectiveName({ name: '', cwd: '/a/b/proj' })).toBe('proj');
+    expect(effectiveName({ name: 'Chosen', cwd: '/a/b/proj' })).toBe('Chosen');
+  });
+});
+
+describe('what blocks a save', () => {
+  const ws = rulesFor('workspace');
+  const ready = { report: { exists: true, isDirectory: true, sessions: 3 }, pending: false };
+
+  it('accepts a directory whose name stands in for the missing name', () => {
+    expect(blockingReason(ws, { name: '', cwd: '/a/b/proj' }, ready)).toBeNull();
+    expect(blockingReason(ws, { name: '', cwd: '' }, { report: null, pending: false })).toContain('directory');
+  });
+
+  it('refuses to save a directory that does not exist or is a file', () => {
+    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: false, isDirectory: false, sessions: 0 }, pending: false })).toContain('No such directory');
+    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: true, isDirectory: false, sessions: 0 }, pending: false })).toContain('file');
+  });
+
+  it('waits for the check rather than saving into the unknown', () => {
+    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: null, pending: true })).toBe('Checking that directory…');
+    // A folder with no directory at all has nothing to check.
+    expect(blockingReason(rulesFor('folder'), { name: 'x', cwd: '' }, { report: null, pending: true })).toBeNull();
   });
 });

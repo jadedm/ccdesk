@@ -97,8 +97,9 @@ a { color: var(--accent); }
 .addform label { font: 400 10.5px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .addform input { width: 100%; font: 400 12.5px var(--mono); padding: 6px 8px; border: 1px solid var(--border2); border-radius: 6px; background: var(--surface); color: var(--ink); outline: none; }
 .addform input:focus { border-color: var(--accent); }
-.addform-dir { display: flex; gap: 6px; }
-.addform-dir input { min-width: 0; }
+.addform-choose { width: 100%; justify-content: center; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addform-clear { border: 0; background: none; color: var(--muted); font: 400 10.5px var(--mono); padding: 2px 0; text-align: left; cursor: pointer; text-decoration: underline; }
+.addform-clear:hover { color: var(--accent); }
 .addform-path { font: 400 10.5px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
 .addform-note { font: 400 11px/1.5 var(--mono); color: var(--ink2); white-space: normal; }
 .addform-note.warn { color: var(--error); }

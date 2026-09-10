@@ -17,12 +17,13 @@ export const rulesFor = (kind: AddKind): AddRules => {
 };
 
 /** The reason this cannot be saved yet, or null when it can. Shown to the user as written. */
+/** The directory comes first because it is the primary choice, and it supplies the name. */
 export const reasonNotReady = (rules: AddRules, fields: AddFields): string | null => {
   const name = fields.name.trim();
   const cwd = fields.cwd.trim();
-  if (rules.nameRequired && name === '') return 'Give it a name.';
   if (rules.directory === 'required' && cwd === '') return 'Choose the directory this workspace covers.';
   if (cwd !== '' && !cwd.startsWith('/')) return 'The directory must be a full path, starting with a slash.';
+  if (rules.nameRequired && name === '') return 'Give it a name.';
   return null;
 };
 
@@ -36,3 +37,24 @@ export const directoryNote = (report: { exists: boolean; isDirectory: boolean; s
 };
 
 export const hasContent = (fields: AddFields): boolean => fields.name.trim() !== '' || fields.cwd.trim() !== '';
+
+/** The last segment of a path, which is the name most people would give the directory. */
+export const basename = (path: string): string => path.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? '';
+
+/** The name that will be saved: what was typed, or the directory's own name. */
+export const effectiveName = (fields: AddFields): string => (fields.name.trim() !== '' ? fields.name.trim() : basename(fields.cwd));
+
+export type DirectoryState = { report: { exists: boolean; isDirectory: boolean; sessions: number } | null; pending: boolean };
+
+/** Everything standing between the user and a save, in the order they should hear it. A
+ * directory that does not exist blocks the save; the report is not merely advisory. */
+export const blockingReason = (rules: AddRules, fields: AddFields, dir: DirectoryState): string | null => {
+  const syntax = reasonNotReady(rules, { ...fields, name: effectiveName(fields) });
+  if (syntax) return syntax;
+  if (fields.cwd.trim() === '') return null;
+  if (dir.pending) return 'Checking that directory…';
+  if (!dir.report) return null;
+  if (!dir.report.exists) return 'No such directory. Check the path before saving.';
+  if (!dir.report.isDirectory) return 'That is a file, not a directory.';
+  return null;
+};

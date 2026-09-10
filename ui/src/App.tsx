@@ -190,14 +190,19 @@ export default function App() {
       closeActive();
     };
     window.addEventListener('keydown', onKey);
+    // Listeners resolve after this effect may already have been cleaned up (strict mode runs
+    // effects twice), so a late arrival unregisters itself instead of doubling up.
+    let live = true;
     const offs: Array<() => void> = [];
+    const keep = (off: () => void) => (live ? offs.push(off) : off());
     if (insideTauri()) {
       void import('@tauri-apps/api/event').then(async ({ listen }) => {
-        offs.push(await listen('close-tab', () => { if (!typing()) closeActive(); }));
-        offs.push(await listen('toggle-sidebar', () => setPrefsState((p) => ({ ...p, railCollapsed: !p.railCollapsed }))));
+        keep(await listen('close-tab', () => { if (!typing()) closeActive(); }));
+        keep(await listen('toggle-sidebar', () => setPrefsState((p) => ({ ...p, railCollapsed: !p.railCollapsed }))));
       });
     }
     return () => {
+      live = false;
       window.removeEventListener('keydown', onKey);
       for (const off of offs) off();
     };
