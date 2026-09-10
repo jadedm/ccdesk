@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 export type MenuAction = { label: string; onPick: () => void; danger?: boolean };
 
@@ -6,8 +6,10 @@ export type MenuAction = { label: string; onPick: () => void; danger?: boolean }
  * trigger's box, because the rail and each row clip their overflow and an absolutely
  * positioned popup inside them is cut off. Focus moves into the list and returns to the
  * trigger on Escape. */
-export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: string }) => {
-  const [at, setAt] = useState<{ top: number; right: number; above: boolean } | null>(null);
+export type RowMenuHandle = { openAt: (x: number, y: number) => void };
+
+export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label: string }>(({ actions, label }, handle) => {
+  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
 
@@ -25,7 +27,6 @@ export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: stri
     return {
       top: Math.round(above ? Math.max(4, box.top - height) : box.bottom + 2),
       right: Math.round(window.innerWidth - box.right),
-      above,
     };
   }, [actions.length]);
 
@@ -34,7 +35,10 @@ export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: stri
     if (!isOpen) return;
     list.current?.querySelector('button')?.focus();
     const away = (e: MouseEvent) => {
-      if (!list.current?.contains(e.target as Node) && !trigger.current?.contains(e.target as Node)) close(false);
+      // A synthetic event can carry a non-Node target; contains() throws on one.
+      const target = e.target instanceof Node ? e.target : null;
+      if (target && (list.current?.contains(target) || trigger.current?.contains(target))) return;
+      close(false);
     };
     const key = (e: KeyboardEvent) => e.key === 'Escape' && close(true);
     // Scrolling follows the row rather than dismissing: focusing the trigger can itself
@@ -55,6 +59,21 @@ export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: stri
     };
   }, [isOpen, place]);
 
+  // A right-click anywhere on the row opens the same list where the pointer is.
+  useImperativeHandle(handle, () => ({
+    openAt: (x: number, y: number) => {
+      const height = 12 + actions.length * 27;
+      // The list hangs from its right edge, so near the left edge it must be pushed right or
+      // it opens off-screen. The stylesheet caps it at 240px plus padding and border.
+      const width = 250;
+      const right = Math.min(Math.max(4, window.innerWidth - x), window.innerWidth - width - 4);
+      setAt({
+        top: Math.round(Math.max(4, Math.min(y, window.innerHeight - height - 4))),
+        right: Math.round(Math.max(4, right)),
+      });
+    },
+  }), [actions.length]);
+
   if (actions.length === 0) return null;
   return (
     <span className="rowmenu" onClick={(e) => e.stopPropagation()}>
@@ -68,4 +87,6 @@ export const RowMenu = ({ actions, label }: { actions: MenuAction[]; label: stri
       )}
     </span>
   );
-};
+});
+
+RowMenu.displayName = 'RowMenu';

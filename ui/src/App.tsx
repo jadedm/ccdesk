@@ -172,13 +172,11 @@ export default function App() {
     };
     const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName ?? '');
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === 'Tab') {
-        e.preventDefault();
-        const next = cycle(stateRef.current.open, stateRef.current.activeKey, e.shiftKey ? -1 : 1);
-        if (!next) return;
-        dispatch({ type: 'activate', key: next });
-        return;
-      }
+      const cycling = e.ctrlKey && e.key === 'Tab';
+      const next = cycling ? cycle(stateRef.current.open, stateRef.current.activeKey, e.shiftKey ? -1 : 1) : null;
+      if (cycling) e.preventDefault();
+      if (next) dispatch({ type: 'activate', key: next });
+      if (cycling) return;
       const meta = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
       if (meta && e.key === 'b' && !typing()) {
         e.preventDefault();
@@ -190,13 +188,21 @@ export default function App() {
       closeActive();
     };
     window.addEventListener('keydown', onKey);
-    let unlisten: (() => void) | undefined;
+    // Listeners resolve after this effect may already have been cleaned up (strict mode runs
+    // effects twice), so a late arrival unregisters itself instead of doubling up.
+    let live = true;
+    const offs: Array<() => void> = [];
+    const keep = (off: () => void) => (live ? offs.push(off) : off());
     if (insideTauri()) {
-      void import('@tauri-apps/api/event').then(({ listen }) => listen('close-tab', () => { if (!typing()) closeActive(); })).then((off) => { unlisten = off; });
+      void import('@tauri-apps/api/event').then(async ({ listen }) => {
+        keep(await listen('close-tab', () => { if (!typing()) closeActive(); }));
+        keep(await listen('toggle-sidebar', () => setPrefsState((p) => ({ ...p, railCollapsed: !p.railCollapsed }))));
+      });
     }
     return () => {
+      live = false;
       window.removeEventListener('keydown', onKey);
-      unlisten?.();
+      for (const off of offs) off();
     };
   }, [closeTab]);
 
@@ -205,6 +211,8 @@ export default function App() {
     const after = (p: Promise<unknown>) => void p.then(refreshIndex).catch((e: unknown) => setAppError(String(e)));
     return {
       renameWorkspace: (id, name) => api && after(api.renameWorkspace(id, name)),
+      setWorkspaceCwd: (id, cwd) => api && after(api.setWorkspaceCwd(id, cwd)),
+      setFolderCwd: (id, cwd) => api && after(api.setFolderCwd(id, cwd)),
       deleteWorkspace: (id) => api && after(api.deleteWorkspace(id)),
       renameFolder: (id, name) => api && after(api.renameFolder(id, name)),
       deleteFolder: (id) => api && after(api.deleteFolder(id)),
@@ -226,6 +234,11 @@ export default function App() {
   // Opening a hit reads the index from the ref, so the callback stays stable for Search. The
   // hit carries its workspace id; a session's own directory may be neither the workspace's
   // nor any folder's, so the path cannot be used to find it.
+  const describeDirectory = useCallback(async (path: string) => {
+    if (!api) throw new Error('sidecar not connected');
+    return api.directory(path);
+  }, [api]);
+
   const openHit = useCallback((hit: { sessionId: string; cwd: string; workspaceId: string; title: string; turn: number }) => {
     const current = indexRef.current;
     const workspace = current?.workspaces.find((w) => w.id === hit.workspaceId);
@@ -285,13 +298,22 @@ export default function App() {
       <Tree
         onCollapse={() => setPrefs({ railCollapsed: true })}
         organise={organise}
+        describeDirectory={describeDirectory}
         search={api ? <Search index={index} run={api.search} onOpen={openHit} /> : null}
         index={index}
         unfiled={unfiled}
         sessions={state.sessions}
         activeKey={state.activeKey}
-        onCreateWorkspace={(name, cwd) => api?.createWorkspace(name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
-        onCreateFolder={(wid, name, cwd) => api?.createFolder(wid, name, cwd).then(refreshIndex).catch((e: unknown) => setAppError(String(e)))}
+        onCreateWorkspace={async (name, cwd) => {
+          if (!api) throw new Error('sidecar not connected');
+          await api.createWorkspace(name, cwd);
+          await refreshIndex();
+        }}
+        onCreateFolder={async (wid, name, cwd) => {
+          if (!api) throw new Error('sidecar not connected');
+          await api.createFolder(wid, name, cwd);
+          await refreshIndex();
+        }}
         onNewSession={onNewSession}
         onOpenSession={(ws, folder, id, title, listedIn) => void onOpenSession(ws, folder, id, title, listedIn)}
       />
@@ -302,7 +324,7 @@ export default function App() {
       <main className="main">
         <div className="head">
           {prefs.railCollapsed && (
-            <button className="rail-show" title="show sidebar (Cmd+B)" onClick={() => setPrefs({ railCollapsed: false })}>sessions</button>
+            <button className="rail-show" title="Cmd+B" onClick={() => setPrefs({ railCollapsed: false })}>Show sidebar</button>
           )}
           <Tabs open={state.open} sessions={state.sessions} activeKey={state.activeKey} onActivate={(key) => dispatch({ type: 'activate', key })} onClose={closeTab} />
           {banner && (
@@ -337,7 +359,7 @@ export default function App() {
         {active ? (
           <Transcript transcript={active.transcript} view={view} sessionKey={active.key} following={active.status === 'running' || active.status === 'starting'} scrollTo={scrollTo} />
         ) : (
-          <div className="transcript"><div className="empty">Pick a session on the left, or add a workspace.</div></div>
+          <div className="transcript"><div className="empty">{prefs.railCollapsed ? 'Show the sidebar to pick a session.' : 'Pick a session on the left, or add a workspace.'}</div></div>
         )}
         {active && (
           <Composer

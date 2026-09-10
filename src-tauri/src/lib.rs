@@ -180,6 +180,9 @@ fn stop_sidecar(state: &Sidecar) {
 /// closes the active tab when it hears the event.
 fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let close_tab = MenuItem::with_id(app, "close-tab", "Close Tab", true, Some("CmdOrCtrl+W"))?;
+    // The sidebar can be hidden, and a hidden sidebar leaves no obvious way back, so the
+    // menu always carries one.
+    let toggle_sidebar = MenuItem::with_id(app, "toggle-sidebar", "Show or Hide Sidebar", true, Some("CmdOrCtrl+B"))?;
     let app_menu = Submenu::with_items(
         app,
         "ccdesk",
@@ -210,13 +213,14 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::select_all(app, None)?,
         ],
     )?;
+    let view = Submenu::with_items(app, "View", true, &[&toggle_sidebar])?;
     let window = Submenu::with_items(
         app,
         "Window",
         true,
         &[&close_tab, &PredefinedMenuItem::minimize(app, None)?, &PredefinedMenuItem::fullscreen(app, None)?],
     )?;
-    Menu::with_items(app, &[&app_menu, &edit, &window])
+    Menu::with_items(app, &[&app_menu, &edit, &view, &window])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -226,9 +230,12 @@ pub fn run() {
         .manage(Sidecar { child: Mutex::new(None), info: Mutex::new(None), failure: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![sidecar_info])
         .on_menu_event(|app, event| {
-            if event.id() == "close-tab" {
-                let _ = app.emit("close-tab", ());
-            }
+            // The webview owns the behaviour; the menu only names it and carries the key.
+            let _ = match event.id().as_ref() {
+                "close-tab" => app.emit("close-tab", ()),
+                "toggle-sidebar" => app.emit("toggle-sidebar", ()),
+                _ => Ok(()),
+            };
         })
         .setup(|app| {
             app.set_menu(build_menu(app.handle())?)?;

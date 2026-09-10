@@ -62,3 +62,17 @@ export type SearchHit = {
 };
 
 export type SearchResponse = { results: SearchHit[]; scanned: number; skipped: number; truncated: boolean };
+
+/** What the app can tell the user about a directory before they commit to it. `problem` is
+ * null when it is usable; 'unreadable' means it is probably there but access was refused,
+ * which is not a reason to refuse the directory. */
+export type DirectoryProblem = 'missing' | 'not-a-directory' | 'unreadable';
+
+export type DirectoryReport = {
+  path: string;
+  exists: boolean;
+  isDirectory: boolean;
+  readable: boolean;
+  sessions: number;
+  problem: DirectoryProblem | null;
+};

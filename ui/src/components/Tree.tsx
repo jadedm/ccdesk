@@ -1,13 +1,17 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import type { IndexFolder, IndexWorkspace, WorkspaceIndex } from '../../../shared/protocol.ts';
 import type { ListedSession } from '../cwd.ts';
 import { metaLine, type RowMeta } from '../meta.ts';
-import { RowMenu, type MenuAction } from './RowMenu.tsx';
+import { AddForm } from './AddForm.tsx';
+import { RowMenu, type MenuAction, type RowMenuHandle } from './RowMenu.tsx';
+import type { DirectoryReport } from '../../../shared/protocol.ts';
 import { hasNativeDialog, pickDirectory } from '../pick.ts';
 import type { SessionView } from '../state.ts';
 
 export type Organise = {
   renameWorkspace: (id: string, name: string) => void;
+  setWorkspaceCwd: (id: string, cwd: string) => void;
+  setFolderCwd: (id: string, cwd: string) => void;
   deleteWorkspace: (id: string) => void;
   renameFolder: (id: string, name: string) => void;
   deleteFolder: (id: string) => void;
@@ -21,65 +25,18 @@ export type TreeProps = {
   onCollapse: () => void;
   organise: Organise;
   search: React.ReactNode;
+  describeDirectory: (path: string) => Promise<DirectoryReport>;
   index: WorkspaceIndex | null;
   unfiled: Record<string, ListedSession[]>;
   sessions: Record<string, SessionView>;
   activeKey: string | null;
-  onCreateWorkspace: (name: string, cwd: string) => void;
-  onCreateFolder: (workspaceId: string, name: string, cwd: string | null) => void;
+  onCreateWorkspace: (name: string, cwd: string) => Promise<void>;
+  onCreateFolder: (workspaceId: string, name: string, cwd: string | null) => Promise<void>;
   onNewSession: (workspace: IndexWorkspace, folder: IndexFolder, title: string) => void;
   onOpenSession: (workspace: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string, listedIn?: string) => void;
 };
 
 const short = (path: string): string => path.replace(/^\/Users\/[^/]+/, '~');
-
-const chooseLabel = { required: 'choose directory', optional: 'directory (optional)' } as const;
-
-type NameFormProps = {
-  placeholder: string;
-  onSubmit: (name: string, cwd: string) => void;
-  onCancel: () => void;
-  /** 'required' shows the directory field and needs a value; 'optional' shows it and allows empty. */
-  directory?: 'required' | 'optional';
-  defaultDirectory?: string;
-  /** An empty name is allowed; the caller decides what that means. */
-  nameOptional?: boolean;
-};
-
-// Name plus, when asked for, a directory. Inside Tauri the directory comes from the native
-// picker; in a browser it is typed.
-const NameForm = ({ placeholder, onSubmit, onCancel, directory, defaultDirectory, nameOptional }: NameFormProps) => {
-  const [name, setName] = useState('');
-  const [cwd, setCwd] = useState('');
-  const native = hasNativeDialog();
-  const nameOk = nameOptional || name.trim() !== '';
-  const cwdOk = (directory !== 'required' || cwd.trim().startsWith('/')) && (cwd.trim() === '' || cwd.trim().startsWith('/'));
-  const valid = nameOk && cwdOk;
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!valid) return;
-    onSubmit(name.trim(), cwd.trim());
-  };
-  const choose = async () => {
-    const chosen = await pickDirectory(cwd || defaultDirectory);
-    if (chosen) setCwd(chosen);
-  };
-  const escape = (e: React.KeyboardEvent) => e.key === 'Escape' && onCancel();
-  return (
-    <form onSubmit={submit} className="nameform">
-      <input autoFocus placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={escape} aria-label={placeholder} />
-      {directory && native && (
-        <button type="button" className="mini" onClick={() => void choose()} title={cwd || 'choose a directory'}>
-          {cwd ? short(cwd) : chooseLabel[directory]}
-        </button>
-      )}
-      {directory && !native && (
-        <input placeholder={directory === 'required' ? '/absolute/path' : '/absolute/path (optional)'} value={cwd} onChange={(e) => setCwd(e.target.value)} onKeyDown={escape} aria-label="directory" />
-      )}
-      <button className="mini" type="submit" title="save" disabled={!valid}>ok</button>
-    </form>
-  );
-};
 
 const liveFor = (sessions: Record<string, SessionView>, sessionId: string): SessionView | undefined =>
   Object.values(sessions).find((s) => s.sessionId === sessionId && s.status !== 'history');
@@ -110,19 +67,30 @@ const InlineName = ({ value, onCommit, onCancel }: { value: string; onCommit: (n
 };
 
 const SessionRow = ({ id, title, meta, sessions, activeKey, onOpen, actions, renaming, onRename, onCancelRename }: { id: string; title: string; meta: RowMeta; sessions: Record<string, SessionView>; activeKey: string | null; onOpen: () => void; actions: MenuAction[]; renaming: boolean; onRename: (name: string) => void; onCancelRename: () => void }) => {
+  const menuRef = useRef<RowMenuHandle>(null);
+  const onContextMenu = (e: React.MouseEvent) => {
+    // While renaming, the field's own menu is the useful one: it carries paste.
+    if (renaming) return;
+    e.preventDefault();
+    menuRef.current?.openAt(e.clientX, e.clientY);
+  };
   const live = liveFor(sessions, id);
   const viewing = Object.values(sessions).find((s) => s.sessionId === id);
   const active = viewing !== undefined && viewing.key === activeKey;
   const dotClass = live ? `dot ${live.status}` : 'dot';
   const line = live ? (live.status === 'running' ? 'working' : live.status) : metaLine(meta);
   return (
-    <div className={`row session selectable${active ? ' active' : ''}`} onClick={onOpen} title={id}>
+    <div className={`row session${active ? ' active' : ''}`} onContextMenu={onContextMenu} title={title}>
       <span className={dotClass} />
-      <span className="label">
-        {renaming ? <InlineName value={title} onCommit={onRename} onCancel={onCancelRename} /> : <span className="st">{title}</span>}
-        {line && <span className="sm">{line}</span>}
-      </span>
-      <RowMenu label={`actions for ${title}`} actions={actions} />
+      {renaming ? (
+        <span className="label"><InlineName value={title} onCommit={onRename} onCancel={onCancelRename} /></span>
+      ) : (
+        <button type="button" className="label rowopen" onClick={onOpen} aria-current={active ? 'true' : undefined}>
+          <span className="st">{title}</span>
+          {line && <span className="sm">{line}</span>}
+        </button>
+      )}
+      <RowMenu label={`actions for ${title}`} actions={actions} ref={menuRef} />
     </div>
   );
 };
@@ -140,6 +108,39 @@ const confirmDelete = (kind: string, name: string, ownDirectory?: string): boole
 export const Tree = (p: TreeProps) => {
   const [adding, setAdding] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const formHasText = useRef(false);
+  const workspaceMenus = useRef<Record<string, RowMenuHandle | null>>({});
+  const folderMenus = useRef<Record<string, RowMenuHandle | null>>({});
+
+  const formTrigger = useRef<HTMLButtonElement | null>(null);
+
+  /** Any exit from a form that holds typing asks first, whether that is another trigger, the
+   * same trigger again, or hiding the rail. */
+  const mayDiscard = (): boolean => !formHasText.current || window.confirm('Discard what you typed in the form?');
+
+  const openForm = (key: string, trigger: HTMLButtonElement | null) => {
+    if (adding && !mayDiscard()) return;
+    formHasText.current = false;
+    formTrigger.current = adding === key ? null : trigger;
+    setAdding(adding === key ? null : key);
+  };
+
+  /** Cancelling returns focus to whatever opened the form, so the keyboard does not restart. */
+  const closeForm = () => {
+    formHasText.current = false;
+    setAdding(null);
+    const trigger = formTrigger.current;
+    formTrigger.current = null;
+    window.setTimeout(() => trigger?.focus(), 0);
+  };
+
+  const collapse = () => {
+    if (adding && !mayDiscard()) return;
+    formHasText.current = false;
+    setAdding(null);
+    p.onCollapse();
+  };
+  const noteContent = (has: boolean) => { formHasText.current = has; };
   const filedIds = new Set(p.index?.workspaces.flatMap((w) => w.folders.flatMap((f) => f.sessions.map((s) => s.sessionId))) ?? []);
   const titleOf = (id: string, ws: IndexWorkspace): string => {
     const known = p.unfiled[ws.id]?.find((s) => s.sessionId === id);
@@ -148,6 +149,16 @@ export const Tree = (p: TreeProps) => {
   };
   const metaOf = (id: string, ws: IndexWorkspace): RowMeta => p.unfiled[ws.id]?.find((s) => s.sessionId === id) ?? {};
   const unfiledOf = (ws: IndexWorkspace): ListedSession[] => (p.unfiled[ws.id] ?? []).filter((s) => !filedIds.has(s.sessionId));
+  const empty = (p.index?.workspaces.length ?? 0) === 0;
+
+  /** Picks a directory natively when possible, and falls back to a prompt in the browser. */
+  const changeDirectory = async (current: string, apply: (cwd: string) => void) => {
+    const chosen = hasNativeDialog() ? await pickDirectory(current) : window.prompt('Full path to the directory', current);
+    const trimmed = chosen?.trim();
+    if (!trimmed || !trimmed.startsWith('/')) return;
+    apply(trimmed);
+  };
+
   const sessionActions = (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, cwd: string): MenuAction[] => {
     const others = ws.folders.filter((f) => f.id !== folder?.id);
     const move = folder ? others.map((f) => ({ label: `Move to ${f.name}`, onPick: () => p.organise.moveSession(folder.id, sessionId, f.id) })) : others.map((f) => ({ label: `File into ${f.name}`, onPick: () => p.organise.fileSession(f.id, sessionId, cwd) }));
@@ -159,46 +170,54 @@ export const Tree = (p: TreeProps) => {
     <aside className="rail">
       <div className="rail-head">
         <h1>Workspaces</h1>
-        <button className="mini" title="hide sidebar (Cmd+B)" onClick={p.onCollapse}>hide</button>
+        <span className="rail-head-actions">
+          <button className="mini" onClick={(e) => openForm('workspace', e.currentTarget)}>+ workspace</button>
+          <button className="mini" title="Cmd+B" onClick={collapse}>Hide sidebar</button>
+        </span>
       </div>
-      {p.search}
+      {adding === 'workspace' && (
+        <AddForm kind="workspace" describe={p.describeDirectory} onCancel={closeForm} onContentChange={noteContent} onSubmit={({ name, cwd }) => p.onCreateWorkspace(name, cwd).then(closeForm)} />
+      )}
+      {!empty && p.search}
       {p.index?.workspaces.map((ws) => {
         const unfiled = unfiledOf(ws);
         return (
         <div className="workspace" key={ws.id}>
-          <div className="row">
+          <div className="row" onContextMenu={(e) => { e.preventDefault(); workspaceMenus.current[ws.id]?.openAt(e.clientX, e.clientY); }}>
             {renaming === ws.id ? (
               <InlineName value={ws.name} onCommit={(name) => { p.organise.renameWorkspace(ws.id, name); setRenaming(null); }} onCancel={() => setRenaming(null)} />
             ) : (
               <span className="label">{ws.name}</span>
             )}
-            <button className="mini" title="new folder" onClick={() => setAdding(`folder:${ws.id}`)}>+ folder</button>
-            <RowMenu label={`actions for ${ws.name}`} actions={[
+            <button className="mini" title="new folder" onClick={(e) => openForm(`folder:${ws.id}`, e.currentTarget)}>+ folder</button>
+            <RowMenu ref={(h) => { workspaceMenus.current[ws.id] = h; }} label={`actions for ${ws.name}`} actions={[
               { label: 'Rename', onPick: () => setRenaming(ws.id) },
+              { label: 'Change directory…', onPick: () => void changeDirectory(ws.cwd, (cwd) => p.organise.setWorkspaceCwd(ws.id, cwd)) },
               { label: 'Delete workspace', danger: true, onPick: () => confirmDelete('workspace', ws.name) && p.organise.deleteWorkspace(ws.id) },
             ]} />
           </div>
           <div className="cwd" title={ws.cwd}>{short(ws.cwd)}</div>
           {adding === `folder:${ws.id}` && (
-            <NameForm placeholder="folder name" directory="optional" defaultDirectory={ws.cwd} onCancel={() => setAdding(null)} onSubmit={(name, cwd) => { p.onCreateFolder(ws.id, name, cwd || null); setAdding(null); }} />
+            <AddForm kind="folder" defaultDirectory={ws.cwd} describe={p.describeDirectory} onCancel={closeForm} onContentChange={noteContent} onSubmit={({ name, cwd }) => p.onCreateFolder(ws.id, name, cwd || null).then(closeForm)} />
           )}
           {ws.folders.map((folder) => (
             <div className="folder" key={folder.id}>
-              <div className="row">
+              <div className="row" onContextMenu={(e) => { e.preventDefault(); folderMenus.current[folder.id]?.openAt(e.clientX, e.clientY); }}>
                 {renaming === folder.id ? (
                   <InlineName value={folder.name} onCommit={(name) => { p.organise.renameFolder(folder.id, name); setRenaming(null); }} onCancel={() => setRenaming(null)} />
                 ) : (
                   <span className="label">{folder.name}</span>
                 )}
-                <button className="mini" title="new session" onClick={() => setAdding(`session:${folder.id}`)}>+ session</button>
-                <RowMenu label={`actions for ${folder.name}`} actions={[
+                <button className="mini" title="new session" onClick={(e) => openForm(`session:${folder.id}`, e.currentTarget)}>+ session</button>
+                <RowMenu ref={(h) => { folderMenus.current[folder.id] = h; }} label={`actions for ${folder.name}`} actions={[
                   { label: 'Rename', onPick: () => setRenaming(folder.id) },
+                  { label: 'Change directory…', onPick: () => void changeDirectory(folder.cwd ?? ws.cwd, (cwd) => p.organise.setFolderCwd(folder.id, cwd)) },
                   { label: 'Delete folder', danger: true, onPick: () => confirmDelete('folder', folder.name, folder.cwd) && p.organise.deleteFolder(folder.id) },
                 ]} />
               </div>
               {folder.cwd && <div className="cwd" title={folder.cwd}>{short(folder.cwd)}</div>}
               {adding === `session:${folder.id}` && (
-                <NameForm placeholder="session name (blank lets the CLI title it)" nameOptional onCancel={() => setAdding(null)} onSubmit={(name) => { p.onNewSession(ws, folder, name); setAdding(null); }} />
+                <AddForm kind="session" onCancel={closeForm} onContentChange={noteContent} onSubmit={({ name }) => { p.onNewSession(ws, folder, name); closeForm(); }} />
               )}
               {folder.sessions.map((s) => (
                 <SessionRow
@@ -241,10 +260,11 @@ export const Tree = (p: TreeProps) => {
         </div>
         );
       })}
-      {adding === 'workspace' ? (
-        <NameForm placeholder="workspace name" directory="required" onCancel={() => setAdding(null)} onSubmit={(name, cwd) => { p.onCreateWorkspace(name, cwd); setAdding(null); }} />
-      ) : (
-        <div className="row"><button className="mini" onClick={() => setAdding('workspace')}>+ workspace</button></div>
+      {empty && (
+        <div className="rail-empty">
+          <p>No workspaces yet.</p>
+          <p className="muted">A workspace is a directory on disk. Add the project you run Claude Code in and its sessions appear here.</p>
+        </div>
       )}
     </aside>
   );

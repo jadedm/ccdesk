@@ -96,6 +96,23 @@ export class IndexStore {
     await this.save();
   }
 
+  /** Points an existing workspace at another directory; its filed sessions keep their own. */
+  async setWorkspaceCwd(workspaceId: string, cwd: unknown): Promise<IndexWorkspace> {
+    const workspace = this.workspace(workspaceId);
+    workspace.cwd = cleanPath(cwd, 'bad_cwd');
+    await this.save();
+    return structuredClone(workspace);
+  }
+
+  /** Points a folder at another directory, or clears it so the workspace's is used. */
+  async setFolderCwd(folderId: string, cwd: unknown): Promise<IndexFolder> {
+    const folder = this.folder(folderId);
+    if (cwd === null || cwd === '') delete folder.cwd;
+    else folder.cwd = cleanPath(cwd, 'bad_cwd');
+    await this.save();
+    return structuredClone(folder);
+  }
+
   async renameFolder(folderId: string, name: unknown): Promise<IndexFolder> {
     const folder = this.folder(folderId);
     folder.name = cleanName(name);
