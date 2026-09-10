@@ -130,7 +130,11 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     const dirs = new Map<string, string>();
     for (const w of store.snapshot().workspaces) {
       dirs.set(w.cwd, w.id);
-      for (const f of w.folders) if (f.cwd && !dirs.has(f.cwd)) dirs.set(f.cwd, w.id);
+      for (const f of w.folders) {
+        if (f.cwd && !dirs.has(f.cwd)) dirs.set(f.cwd, w.id);
+        // A filed session keeps the directory it was filed from, which may be neither.
+        for (const s of f.sessions) if (!dirs.has(s.cwd)) dirs.set(s.cwd, w.id);
+      }
     }
     const hits: SearchHit[] = [];
     let scanned = 0;

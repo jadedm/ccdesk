@@ -4,10 +4,11 @@
 
 import { createReadStream } from 'node:fs';
 import type { SearchHit, SessionSummary } from '../../shared/protocol.ts';
+import { bashInput, machineryTag, startsTurn } from '../../shared/turns.ts';
 
 type Hit = { turn: number; snippet: string };
 
-type Record_ = { type?: string; isMeta?: boolean; message?: { content?: unknown } };
+type Record_ = { type?: string; isMeta?: boolean; parent_tool_use_id?: string | null; message?: { content?: unknown } };
 
 const textOf = (content: unknown): string[] => {
   if (typeof content === 'string') return [content];
@@ -15,13 +16,18 @@ const textOf = (content: unknown): string[] => {
   return content.filter((c): c is { type: 'text'; text: string } => c?.type === 'text' && typeof c.text === 'string').map((c) => c.text);
 };
 
-/** Harness machinery the transcript folds away: reminders, notifications, command output. */
-const isMachinery = (text: string): boolean => text.trimStart().startsWith('<');
-
 const isPrompt = (record: Record_): boolean => {
-  if (record.type !== 'user' || record.isMeta) return false;
+  if (record.type !== 'user') return false;
   const texts = textOf(record.message?.content);
-  return texts.length > 0 && !isMachinery(texts[0]);
+  return texts.length > 0 && startsTurn(texts[0], record.isMeta === true);
+};
+
+/** The text a reader can actually see in this record, in the form they see it. */
+const searchable = (record: Record_): string[] => {
+  if (record.isMeta) return [];
+  const texts = textOf(record.message?.content);
+  if (record.type !== 'user') return texts;
+  return texts.map((t) => bashInput(t) ?? (machineryTag(t) ? '' : t)).filter((t) => t !== '');
 };
 
 export const snippetAround = (text: string, index: number, radius = 60): string => {
@@ -61,10 +67,10 @@ const searchLine = (line: string, needle: string, currentTurn: () => number, nex
     return null;
   }
   if (record.type !== 'user' && record.type !== 'assistant') return null;
+  // Subagent traffic never reaches the rendered transcript, so it is neither counted nor searched.
+  if (typeof record.parent_tool_use_id === 'string' && record.parent_tool_use_id !== '') return null;
   if (isPrompt(record)) nextTurn();
-  if (record.type === 'user' && record.isMeta) return null;
-  for (const text of textOf(record.message?.content)) {
-    if (record.type === 'user' && isMachinery(text)) continue;
+  for (const text of searchable(record)) {
     const index = text.toLowerCase().indexOf(needle);
     if (index !== -1) return { turn: Math.max(1, currentTurn()), snippet: snippetAround(text, index) };
   }

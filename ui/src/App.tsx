@@ -43,8 +43,14 @@ export default function App() {
   const view: View = { hideThinking: prefs.hideThinking, showTools: prefs.showTools, showSystem: prefs.showSystem, bionic: prefs.bionic };
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
-  /** A search hit asks the transcript to bring one turn into view. */
-  const [scrollToTurn, setScrollToTurn] = useState<number | null>(null);
+  /** A search hit asks the transcript to bring one turn into view. The token rises on every
+   * request so clicking the same hit twice scrolls again. */
+  const [scrollTo, setScrollTo] = useState<{ turn: number; token: number } | null>(null);
+  const scrollToken = useRef(0);
+  const requestTurn = useCallback((turn?: number) => {
+    scrollToken.current += 1;
+    setScrollTo(turn ? { turn, token: scrollToken.current } : null);
+  }, []);
   const indexRef = useRef<WorkspaceIndex | null>(null);
   const socket = useRef<Socket | null>(null);
   const pendingFile = useRef<Record<string, { folderId: string; cwd: string }>>({});
@@ -134,7 +140,7 @@ export default function App() {
     const existing = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
     if (existing) {
       dispatch({ type: 'activate', key: existing.key });
-      setScrollToTurn(turn ?? null);
+      requestTurn(turn);
       return;
     }
     const records = await api.messages(sessionId, cwd).catch((e: unknown) => {
@@ -142,8 +148,8 @@ export default function App() {
       return [] as unknown[];
     });
     dispatch({ type: 'open_history', key: `hist-${sessionId}`, sessionId, cwd, folderId: folder?.id ?? null, title, records });
-    setScrollToTurn(turn ?? null);
-  }, [api]);
+    requestTurn(turn);
+  }, [api, requestTurn]);
 
   // Any live session (idle ones still hold a query on the sidecar) is stopped on close; a
   // running one asks first. It can be resumed by id from the tree. Saved ones leave memory.
@@ -204,9 +210,12 @@ export default function App() {
       deleteFolder: (id) => api && after(api.deleteFolder(id)),
       renameSession: (sessionId, cwd, title) => {
         if (!api) return;
-        after(api.rename(sessionId, cwd, title));
-        const open = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
-        if (open) dispatch({ type: 'rename', key: open.key, title });
+        // The open tab is renamed only once the store has accepted it.
+        void api.rename(sessionId, cwd, title).then(() => {
+          const open = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
+          if (open) dispatch({ type: 'rename', key: open.key, title });
+          return refreshIndex();
+        }).catch((e: unknown) => setAppError(String(e)));
       },
       moveSession: (folderId, sessionId, target) => api && after(api.moveSession(folderId, sessionId, target)),
       unfileSession: (folderId, sessionId) => api && after(api.unfileSession(folderId, sessionId)),
@@ -321,7 +330,7 @@ export default function App() {
           )}
         </div>
         {active ? (
-          <Transcript transcript={active.transcript} view={view} sessionKey={active.key} following={active.status === 'running' || active.status === 'starting'} scrollToTurn={scrollToTurn} />
+          <Transcript transcript={active.transcript} view={view} sessionKey={active.key} following={active.status === 'running' || active.status === 'starting'} scrollTo={scrollTo} />
         ) : (
           <div className="transcript"><div className="empty">Pick a session on the left, or add a workspace.</div></div>
         )}

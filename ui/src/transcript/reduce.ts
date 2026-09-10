@@ -8,6 +8,7 @@
 // O(turns), not O(blocks). React strict mode runs reducers twice on the same input, which
 // turned a shared-block mutation into a duplicated final message once.
 
+import { bashInput, machineryTag } from '../../../shared/turns.ts';
 import { countLines, summarise } from './summaries.ts';
 import type { Block, Transcript, Turn } from './blocks.ts';
 
@@ -90,8 +91,8 @@ const findOpen = (t: Transcript, kind: StreamingKind) => {
 
 // Harness-injected user turns are machinery the CLI put in the conversation, not something
 // the user typed. They become folded system blocks tagged with their kind, so the reader
-// can open them when the question is "what did the harness tell Claude here".
-const systemTag = /^<(system-reminder|task-notification|local-command-caveat|local-command-stdout|local-command-stderr|command-message|command-args|command-contents|command-stdout|command-stderr|user-prompt-submit-hook|bash-stdout|bash-stderr)\b/;
+// can open them when the question is "what did the harness tell Claude here". The tag list
+// lives in shared/turns.ts because the sidecar's search must fold exactly the same records.
 
 /** Remove only the wrapper the harness added; whatever it quoted inside stays as written. */
 const unwrap = (text: string, tag: string): string =>
@@ -102,10 +103,10 @@ const userTextToBlock = (text: string, at?: string): Block | null => {
   if (trimmed === '') return null;
   const command = trimmed.match(/^<command-name>([^<]+)<\/command-name>/);
   if (command) return { kind: 'note', id: nextId('note'), text: `ran ${command[1]}`, tone: 'info' };
-  const bash = trimmed.match(/^<bash-input>([\s\S]*?)<\/bash-input>/);
-  if (bash) return { kind: 'user', id: nextId('user'), text: `! ${bash[1].trim()}`, at };
-  const system = trimmed.match(systemTag);
-  if (system) return { kind: 'system', id: nextId('system'), tag: system[1], text: unwrap(trimmed, system[1]) };
+  const bash = bashInput(trimmed);
+  if (bash !== null) return { kind: 'user', id: nextId('user'), text: `! ${bash}`, at };
+  const system = machineryTag(trimmed);
+  if (system) return { kind: 'system', id: nextId('system'), tag: system, text: unwrap(trimmed, system) };
   if (trimmed.startsWith('[Request interrupted')) return { kind: 'note', id: nextId('note'), text: 'interrupted by user', tone: 'info' };
   return { kind: 'user', id: nextId('user'), text: trimmed, at };
 };
