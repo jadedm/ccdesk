@@ -40,7 +40,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
   }, [prefs.theme]);
-  const view: View = { hideThinking: prefs.hideThinking, showTools: prefs.showTools, showSystem: prefs.showSystem, bionic: prefs.bionic };
+  const view: View = { hideThinking: prefs.hideThinking, showTools: prefs.showTools, showSystem: prefs.showSystem, bionic: prefs.bionic, theme: prefs.theme };
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   /** A search hit asks the transcript to bring one turn into view. The token rises on every

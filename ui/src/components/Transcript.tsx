@@ -4,7 +4,10 @@ import remarkGfm from 'remark-gfm';
 import { bionicNodes } from '../transcript/bionic.ts';
 import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.ts';
 import { toolDisplayName } from '../transcript/summaries.ts';
+import type { Theme } from '../transcript/mermaid.ts';
 import { keepAtBottom, visible, type View } from '../transcript/view.ts';
+import { fenceText, isMermaid } from '../transcript/mermaid-block.ts';
+import { Diagram } from './Diagram.tsx';
 
 const clock = (iso?: string): string => {
   if (!iso) return '';
@@ -62,6 +65,13 @@ const bionicComponents: Components = {
   td: ({ children, node: _node, ...rest }) => <td {...rest}>{bionify(children)}</td>,
 };
 
+/** A mermaid fence becomes a diagram; every other fence keeps its code rendering. Bionic mode
+ * never touches either, since neither is prose. */
+const codeComponents = (theme: Theme, streaming: boolean): Components => ({
+  code: ({ className, children, node: _node, ...rest }) =>
+    isMermaid(className) ? <Diagram source={fenceText(children)} theme={theme} streaming={streaming} /> : <code className={className} {...rest}>{children}</code>,
+});
+
 /** Small mono line above a block: who, and when. */
 const Role = ({ who, at }: { who: string; at?: string }) => (
   <div className="role">
@@ -70,7 +80,7 @@ const Role = ({ who, at }: { who: string; at?: string }) => (
   </div>
 );
 
-const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) => {
+const BlockView = memo(({ block, bionic, theme }: { block: Block; bionic: boolean; theme: Theme }) => {
   switch (block.kind) {
     case 'user':
       return (
@@ -82,7 +92,7 @@ const BlockView = memo(({ block, bionic }: { block: Block; bionic: boolean }) =>
     case 'text':
       return (
         <div className={block.streaming ? 'prose streaming' : 'prose'}>
-          <Markdown remarkPlugins={[remarkGfm]} components={bionic ? bionicComponents : undefined}>{block.text}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={{ ...(bionic ? bionicComponents : {}), ...codeComponents(theme, block.streaming) }}>{block.text}</Markdown>
         </div>
       );
     case 'thinking':
@@ -174,7 +184,7 @@ export const Transcript = ({ transcript, view, sessionKey, following, scrollTo }
               {shown.map((block) => (
                 <span key={block.id} style={{ display: 'contents' }}>
                   {block.id === labelBefore && <Role who="claude" at={turn.replyAt} />}
-                  <BlockView block={block} bionic={view.bionic} />
+                  <BlockView block={block} bionic={view.bionic} theme={view.theme} />
                 </span>
               ))}
             </section>

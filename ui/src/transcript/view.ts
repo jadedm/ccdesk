@@ -1,6 +1,6 @@
 import type { Block } from './blocks.ts';
 
-export type View = { hideThinking: boolean; showTools: boolean; showSystem: boolean; bionic: boolean };
+export type View = { hideThinking: boolean; showTools: boolean; showSystem: boolean; bionic: boolean; theme: 'light' | 'dark' };
 
 /** Which blocks the current toggles let through. Prose and user turns always show. */
 export const visible = (block: Block, view: View): boolean => {
