@@ -11,9 +11,10 @@ export type Prefs = {
   showTools: boolean;
   showSystem: boolean;
   theme: Theme;
+  railCollapsed: boolean;
 };
 
-export const defaults: Prefs = { railWidth: 280, textSize: 16.5, bionic: false, hideThinking: true, showTools: true, showSystem: false, theme: 'light' };
+export const defaults: Prefs = { railWidth: 280, textSize: 16.5, bionic: false, hideThinking: true, showTools: true, showSystem: false, theme: 'light', railCollapsed: false };
 
 export const railBounds = { min: 200, max: 600 };
 export const textBounds = { min: 13, max: 26 };
@@ -36,6 +37,7 @@ export const loadPrefs = (): Prefs => {
       showTools: Boolean(parsed.showTools ?? defaults.showTools),
       showSystem: Boolean(parsed.showSystem ?? defaults.showSystem),
       theme: parsed.theme === 'dark' ? 'dark' : 'light',
+      railCollapsed: parsed.railCollapsed === true,
     };
   } catch {
     return defaults;
@@ -52,3 +54,6 @@ export const savePrefs = (prefs: Prefs): void => {
 
 export const clampRail = (width: number): number => clamp(width, railBounds.min, railBounds.max);
 export const clampText = (size: number): number => clamp(size, textBounds.min, textBounds.max);
+
+/** The app grid's columns: rail, splitter and main, or main alone when the rail is collapsed. */
+export const gridColumns = (collapsed: boolean, railWidth: number): string => (collapsed ? '0 0 1fr' : `${railWidth}px 6px 1fr`);

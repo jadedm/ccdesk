@@ -6,6 +6,8 @@ import { hasNativeDialog, pickDirectory } from '../pick.ts';
 import type { SessionView } from '../state.ts';
 
 export type TreeProps = {
+  collapsed: boolean;
+  onCollapse: () => void;
   index: WorkspaceIndex | null;
   unfiled: Record<string, ListedSession[]>;
   sessions: Record<string, SessionView>;
@@ -96,9 +98,13 @@ export const Tree = (p: TreeProps) => {
   };
   const metaOf = (id: string, ws: IndexWorkspace): RowMeta => p.unfiled[ws.id]?.find((s) => s.sessionId === id) ?? {};
   const unfiledOf = (ws: IndexWorkspace): ListedSession[] => (p.unfiled[ws.id] ?? []).filter((s) => !filedIds.has(s.sessionId));
+  if (p.collapsed) return <aside className="rail" hidden aria-hidden="true" />;
   return (
     <aside className="rail">
-      <h1>Workspaces</h1>
+      <div className="rail-head">
+        <h1>Workspaces</h1>
+        <button className="mini" title="hide sidebar (Cmd+B)" onClick={p.onCollapse}>hide</button>
+      </div>
       {p.index?.workspaces.map((ws) => {
         const unfiled = unfiledOf(ws);
         return (
