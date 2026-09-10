@@ -1,6 +1,7 @@
 import type { PermissionRequest, ServerMessage } from '../../shared/protocol.ts';
 import { emptyTranscript, type Transcript } from './transcript/blocks.ts';
 import { reduceAll, reduceRecord } from './transcript/reduce.ts';
+import { withClosed, withOpened } from './tabs.ts';
 
 export type SessionStatus = 'history' | 'starting' | 'idle' | 'running' | 'ended';
 
@@ -18,6 +19,8 @@ export type SessionView = {
 
 export type State = {
   sessions: Record<string, SessionView>;
+  /** Keys of open sessions in tab order. */
+  open: string[];
   activeKey: string | null;
 };
 
@@ -30,6 +33,7 @@ export type Action =
   | { type: 'activate'; key: string }
   | { type: 'rename'; key: string; title: string }
   | { type: 'permission_answered'; key: string }
+  | { type: 'close'; key: string }
   | { type: 'socket_reset' };
 
 const messageType = (message: unknown): string => (message as { type?: string }).type ?? '';
@@ -57,7 +61,7 @@ const afterSocketReset = (session: SessionView): SessionView => {
   return { ...session, status: 'ended', permission: null, error: 'connection to the sidecar was lost before the session started' };
 };
 
-export const initialState: State = { sessions: {}, activeKey: null };
+export const initialState: State = { sessions: {}, open: [], activeKey: null };
 
 export const reducer = (state: State, action: Action): State => {
   switch (action.type) {
@@ -73,7 +77,7 @@ export const reducer = (state: State, action: Action): State => {
         permission: null,
         error: null,
       };
-      return { sessions: { ...state.sessions, [action.key]: session }, activeKey: action.key };
+      return { sessions: { ...state.sessions, [action.key]: session }, open: withOpened(state.open, action.key), activeKey: action.key };
     }
     case 'new_live': {
       // Resuming a saved session carries its transcript over and retires the history view,
@@ -81,6 +85,8 @@ export const reducer = (state: State, action: Action): State => {
       const existing = action.fromKey ? state.sessions[action.fromKey] : undefined;
       const sessions = { ...state.sessions };
       if (action.fromKey) delete sessions[action.fromKey];
+      // A resumed session keeps its tab position under the new key.
+      const open = action.fromKey && state.open.includes(action.fromKey) ? state.open.map((k) => (k === action.fromKey ? action.key : k)) : withOpened(state.open, action.key);
       const session: SessionView = {
         key: action.key,
         sessionId: action.resume,
@@ -92,7 +98,14 @@ export const reducer = (state: State, action: Action): State => {
         permission: null,
         error: null,
       };
-      return { sessions: { ...sessions, [action.key]: session }, activeKey: action.key };
+      return { sessions: { ...sessions, [action.key]: session }, open, activeKey: action.key };
+    }
+    case 'close': {
+      if (!state.sessions[action.key]) return state;
+      const sessions = { ...state.sessions };
+      delete sessions[action.key];
+      const next = withClosed(state.open, state.activeKey, action.key);
+      return { sessions, open: next.open, activeKey: next.active };
     }
     case 'server': {
       const session = state.sessions[action.message.key];

@@ -4,7 +4,9 @@ import { Api, Socket, discoverSidecar, type SocketState } from './api.ts';
 import { Composer } from './components/Composer.tsx';
 import { Transcript } from './components/Transcript.tsx';
 import type { View } from './transcript/view.ts';
+import { Tabs } from './components/Tabs.tsx';
 import { Tree } from './components/Tree.tsx';
+import { cycle } from './tabs.ts';
 import { folderCwd, mergeListings, workspaceDirs, type ListedSession } from './cwd.ts';
 import { clampRail, clampText, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { initialState, reducer } from './state.ts';
@@ -133,6 +135,35 @@ export default function App() {
     dispatch({ type: 'open_history', key: `hist-${sessionId}`, sessionId, cwd, folderId: folder?.id ?? null, title, records });
   };
 
+  // Closing a running session stops it on the sidecar after a confirm; it can be resumed by
+  // id from the tree. Saved and idle ones simply leave memory.
+  const closeTab = useCallback((key: string) => {
+    const session = stateRef.current.sessions[key];
+    if (!session) return;
+    const live = session.status === 'running' || session.status === 'starting';
+    if (live && !window.confirm(`"${session.title}" is still working. Close it and stop the session?`)) return;
+    if (session.status !== 'history') send({ type: 'stop', key });
+    dispatch({ type: 'close', key });
+  }, [send]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
+      if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault();
+        const next = cycle(stateRef.current.open, stateRef.current.activeKey, e.shiftKey ? -1 : 1);
+        if (next) dispatch({ type: 'activate', key: next });
+        return;
+      }
+      if (meta && e.key === 'w' && stateRef.current.activeKey) {
+        e.preventDefault();
+        closeTab(stateRef.current.activeKey);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [closeTab]);
+
   const onRename = async (title: string) => {
     setRenaming(false);
     if (!api || !active?.sessionId || title.trim() === '' || title === active.title) return;
@@ -189,6 +220,7 @@ export default function App() {
       <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
       <main className="main">
         <div>
+          <Tabs open={state.open} sessions={state.sessions} activeKey={state.activeKey} onActivate={(key) => dispatch({ type: 'activate', key })} onClose={closeTab} />
           {banner && (
             <div className={discoveryError || socketState !== 'open' ? 'banner' : 'banner info'} onClick={() => setAppError(null)}>
               {banner}
