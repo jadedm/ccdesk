@@ -165,9 +165,9 @@ export default function App() {
         return;
       }
       const meta = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
-      if (meta && e.key === 'b') {
+      if (meta && e.key === 'b' && !typing()) {
         e.preventDefault();
-        setPrefsState((p) => { const next = { ...p, railCollapsed: !p.railCollapsed }; return next; });
+        setPrefsState((p) => ({ ...p, railCollapsed: !p.railCollapsed }));
         return;
       }
       if (!meta || e.key !== 'w' || insideTauri() || typing()) return;
@@ -224,12 +224,13 @@ export default function App() {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  const style = { '--rail': `${prefs.railWidth}px`, '--prose-size': `${prefs.textSize}px`, gridTemplateColumns: gridColumns(prefs.railCollapsed, prefs.railWidth) } as React.CSSProperties;
+  // The inline template is the one source of truth for the columns; the stylesheet sets none.
+  const style = { '--prose-size': `${prefs.textSize}px`, gridTemplateColumns: gridColumns(prefs.railCollapsed, prefs.railWidth) } as React.CSSProperties;
 
   return (
-    <div className={[prefs.bionic ? 'app bionic' : 'app', prefs.railCollapsed ? 'rail-collapsed' : ''].join(' ').trim()} style={style}>
+    <div className={prefs.bionic ? 'app bionic' : 'app'} style={style}>
+      {!prefs.railCollapsed && (
       <Tree
-        collapsed={prefs.railCollapsed}
         onCollapse={() => setPrefs({ railCollapsed: true })}
         index={index}
         unfiled={unfiled}
@@ -240,7 +241,10 @@ export default function App() {
         onNewSession={onNewSession}
         onOpenSession={(ws, folder, id, title, listedIn) => void onOpenSession(ws, folder, id, title, listedIn)}
       />
-      <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
+      )}
+      {!prefs.railCollapsed && (
+        <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
+      )}
       <main className="main">
         <div className="head">
           {prefs.railCollapsed && (
