@@ -12,17 +12,16 @@ export const Search = ({ index, run, onOpen }: Props) => {
   const [q, setQ] = useState('');
   const [state, setState] = useState<{ q: string; response: SearchResponse | null; error: string | null }>({ q: '', response: null, error: null });
   const trimmed = q.trim();
-  // Busy is derived: the box holds a query the last answer does not cover yet.
+  // Busy is derived: the box holds a query the last answer does not cover yet. An error
+  // belongs to the query that produced it, so a shorter box hides it without a state write.
   const busy = trimmed.length >= 2 && state.q !== trimmed;
+  const error = trimmed.length >= 2 && !busy ? state.error : null;
 
   const latest = useRef('');
   useEffect(() => {
     const query = q.trim();
     latest.current = query;
-    if (query.length < 2) {
-      setState((s) => (s.error ? { ...s, error: null } : s));
-      return;
-    }
+    if (query.length < 2) return;
     const timer = setTimeout(() => {
       // A slower earlier query must not overwrite a newer answer.
       const keep = (write: () => void) => latest.current === query && write();
@@ -38,7 +37,7 @@ export const Search = ({ index, run, onOpen }: Props) => {
     <div className="search">
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sessions" aria-label="search sessions" onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
       {busy && <div className="search-note">searching</div>}
-      {state.error && !busy && <div className="search-note error">{state.error}</div>}
+      {error && <div className="search-note error">{error}</div>}
       {state.response && !busy && trimmed.length >= 2 && (
         <div className="search-results">
           {groups.length === 0 && <div className="search-note">no matches in {state.response.scanned} sessions{state.response.skipped > 0 ? `, ${state.response.skipped} unreadable` : ''}</div>}
