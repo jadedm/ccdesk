@@ -14,6 +14,8 @@
   --prose-size: 16.5px;
   /* the reader's 44rem column widened by a tenth on each side */
   --reading-width: 52.8rem;
+  /* the composer field and its button share one resting height; see Composer.contract.test.ts */
+  --composer-control-h: 46px;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -222,18 +224,20 @@ details.system pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--
 .permission .card .d { max-height: 20vh; overflow: auto; }
 .permission .card pre { font: 400 11.5px/1.5 var(--mono); margin: 6px 0; white-space: pre-wrap; max-height: 200px; overflow: auto; color: var(--ink2); }
 .permission .actions { display: flex; gap: 8px; margin-top: 8px; }
-/* The field and its button are one control: same height at rest, and the button stays with
-   the bottom edge as the field grows. */
+/* The field and its button are one control. Both take their resting height from
+   --composer-control-h so the two cannot drift apart, and flex-end keeps the button on the bottom
+   edge as the field grows. The field grows by counted newlines only; wrapped text is #27. */
 .composer { max-width: var(--reading-width); margin: 0 auto; padding: 12px 32px 4px; display: flex; gap: 10px; align-items: flex-end; }
-.composer textarea { flex: 1; font: 400 15px/1.5 var(--serif); padding: 10px 12px; border: 1px solid var(--border2); border-radius: 8px; background: var(--surface); color: var(--ink); resize: none; min-height: 46px; max-height: 240px; }
+.composer textarea { flex: 1; font: 400 15px/1.5 var(--serif); padding: 10px 12px; border: 1px solid var(--border2); border-radius: 8px; background: var(--surface); color: var(--ink); resize: none; min-height: var(--composer-control-h); max-height: 240px; }
 .composer textarea:focus { outline: none; border-color: var(--accent); }
-.composer .btn { min-height: 46px; padding: 0 16px; border-radius: 8px; flex: none; }
-.composer-hint { max-width: var(--reading-width); margin: 0 auto; padding: 0 32px 14px; font: 400 10.5px var(--mono); color: var(--muted); }
+.composer-hint { max-width: var(--reading-width); margin: 0 auto; padding: 0 32px 14px; font: 400 10.5px var(--mono); color: var(--ink2); }
 .btn { border: 1px solid var(--border2); background: var(--surface); border-radius: 6px; padding: 6px 12px; cursor: pointer; color: var(--ink); font: 400 12px var(--mono); }
 .btn:hover { border-color: var(--muted); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
 .btn.danger { color: var(--error); }
 .btn:disabled { opacity: 0.5; cursor: default; }
+/* After the .btn group deliberately: same specificity, so source order is what makes this win. */
+.composer .btn { min-height: var(--composer-control-h); padding: 0 16px; border-radius: 8px; flex: none; }
 
 .banner { background: var(--surface2); color: var(--error); padding: 6px 28px; font: 400 11px var(--mono); border-bottom: 1px solid var(--border); }
 .banner.info { color: var(--accent); }

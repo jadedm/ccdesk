@@ -53,6 +53,7 @@ export const Composer = ({ status, permission, onSend, onInterrupt, onPermission
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKey}
           aria-label="message"
+          aria-describedby="composer-hint"
         />
         {running ? (
           <button className="btn danger" onClick={onInterrupt}>Interrupt</button>
@@ -60,7 +61,7 @@ export const Composer = ({ status, permission, onSend, onInterrupt, onPermission
           <button className="btn primary" onClick={submit} disabled={text.trim() === ''}>Send</button>
         )}
       </div>
-      <div className="composer-hint">{hint}</div>
+      <div className="composer-hint" id="composer-hint">{hint}</div>
     </div>
   );
 };
