@@ -113,7 +113,7 @@ describe('reduce: live and history stay aligned in the awkward cases', () => {
 describe('summaries', () => {
   it('shows the command, the path, the description or the tool name', () => {
     expect(summarise('Bash', { command: 'grep -n foo src/\nmore', description: 'x' })).toBe('grep -n foo src/');
-    expect(summarise('Read', { file_path: '/Users/someone/proj/a.ts' })).toBe('~/proj/a.ts');
+    expect(summarise('Read', { file_path: '/Users/ada/proj/a.ts' })).toBe('~/proj/a.ts');
     expect(summarise('Edit', { file_path: '/x/b.ts', old_string: 'a', new_string: 'b' })).toBe('/x/b.ts');
     expect(summarise('Write', { file_path: '/x/c.ts', content: 'zzz' })).toBe('/x/c.ts');
     expect(summarise('Agent', { description: 'Find callers', prompt: 'long prompt' })).toBe('Find callers');
