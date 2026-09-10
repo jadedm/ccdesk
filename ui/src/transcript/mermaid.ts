@@ -35,7 +35,12 @@ const palettes: Record<Theme, Record<string, string>> = {
 };
 
 export const loadMermaid = async (theme: Theme) => {
-  loading ??= import('mermaid');
+  // A failed import must not stay cached. `loading ??= import(...)` would keep the rejected
+  // promise, so one bad load would make every later diagram in the session fail the same way.
+  loading ??= import('mermaid').catch((error: unknown) => {
+    loading = null;
+    throw error;
+  });
   const { default: mermaid } = await loading;
   if (configuredFor !== theme) {
     mermaid.initialize({
@@ -64,14 +69,18 @@ let counter = 0;
 export const renderDiagram = async (source: string, theme: Theme): Promise<DiagramResult> => {
   const text = source.trim();
   if (text === '') return { error: 'Empty diagram.' };
+  const id = `ccdesk-diagram-${++counter}`;
   try {
     const mermaid = await loadMermaid(theme);
-    const { svg } = await mermaid.render(`ccdesk-diagram-${++counter}`, text);
+    const { svg } = await mermaid.render(id, text);
     return { svg };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   } finally {
-    // Mermaid leaves its measuring node behind when a parse fails.
-    document.querySelectorAll('[id^="dccdesk-diagram-"]').forEach((node) => node.remove());
+    // Mermaid leaves its measuring node behind when a parse fails. Remove only this render's own
+    // node: matching the shared prefix deleted the node another diagram was still measuring
+    // inside, and a reply with several diagrams renders them at the same time. Measured before
+    // the fix: eight concurrent diagrams, seven failed with "Cannot read properties of null".
+    document.getElementById(`d${id}`)?.remove();
   }
 };
