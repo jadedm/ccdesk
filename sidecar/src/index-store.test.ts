@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IndexStore } from './index-store.ts';
@@ -91,6 +92,18 @@ describe('IndexStore', () => {
     expect(await codeOf(store.fileSession(b.id, 'sess-1', '/tmp/w'))).toBe('409 session_already_filed');
     expect(await codeOf(store.fileSession(a.id, '', '/tmp/w'))).toBe('400 session_id_required');
     expect(store.snapshot().workspaces[0].folders[0].sessions).toEqual([{ sessionId: 'sess-1', cwd: '/tmp/w' }]);
+  });
+});
+
+describe('IndexStore: concurrent writes', () => {
+  it('survives many overlapping saves and persists the last state', async () => {
+    const { path, store } = await fresh();
+    const ws = await store.createWorkspace('W', '/tmp/w');
+    await Promise.all(Array.from({ length: 25 }, (_, i) => store.createFolder(ws.id, `f${i}`)));
+    const reloaded = new IndexStore(path);
+    expect(await reloaded.load()).toBeNull();
+    expect(reloaded.snapshot().workspaces[0].folders).toHaveLength(25);
+    expect((await readdir(dirname(path))).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
 });
 

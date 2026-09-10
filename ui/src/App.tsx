@@ -223,11 +223,16 @@ export default function App() {
     };
   }, [api, refreshIndex]);
 
-  // Opening a hit reads the index from the ref, so the callback stays stable for Search.
-  const openHit = useCallback((hit: { sessionId: string; cwd: string; title: string; turn: number }) => {
+  // Opening a hit reads the index from the ref, so the callback stays stable for Search. The
+  // hit carries its workspace id; a session's own directory may be neither the workspace's
+  // nor any folder's, so the path cannot be used to find it.
+  const openHit = useCallback((hit: { sessionId: string; cwd: string; workspaceId: string; title: string; turn: number }) => {
     const current = indexRef.current;
-    const workspace = current?.workspaces.find((w) => w.cwd === hit.cwd || w.folders.some((f) => f.cwd === hit.cwd));
-    if (!workspace) return;
+    const workspace = current?.workspaces.find((w) => w.id === hit.workspaceId);
+    if (!workspace) {
+      setAppError(`"${hit.title}" is no longer in a known workspace`);
+      return;
+    }
     const folder = workspace.folders.find((f) => f.sessions.some((s) => s.sessionId === hit.sessionId)) ?? null;
     void onOpenSession(workspace, folder, hit.sessionId, hit.title, hit.cwd, hit.turn);
   }, [onOpenSession]);

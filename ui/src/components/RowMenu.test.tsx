@@ -7,7 +7,7 @@ describe('RowMenu', () => {
     const html = renderToStaticMarkup(<RowMenu label="session actions" actions={[{ label: 'Rename', onPick: () => {} }, { label: 'Delete', onPick: () => {}, danger: true }]} />);
     expect(html).toContain('aria-label="session actions"');
     expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain('role="menu"');
+    expect(html).not.toContain('menuitem');
     expect(renderToStaticMarkup(<RowMenu label="x" actions={[]} />)).toBe('');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chmod, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { matchSummary, searchFile, snippetAround, sortHits } from './search.ts';
@@ -45,14 +45,9 @@ describe('search', () => {
     expect(await searchFile(file, 'plums')).toBeNull();
   });
 
-  it('propagates an unreadable file as an error the caller can skip', async () => {
+  it('rejects on a file it cannot open, so the caller can count it as skipped', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ccdesk-search-'));
-    const file = join(dir, 'locked.jsonl');
-    await writeFile(file, transcript);
-    await chmod(file, 0o000);
-    const outcome = await searchFile(file, 'apples').then(() => 'read', () => 'error');
-    await chmod(file, 0o600);
-    expect(['read', 'error']).toContain(outcome);
+    await expect(searchFile(join(dir, 'missing.jsonl'), 'apples')).rejects.toThrow();
   });
 
   it('matches titles and first prompts as turn 1, clips snippets, and sorts newest first', () => {

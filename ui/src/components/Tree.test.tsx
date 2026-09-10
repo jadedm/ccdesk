@@ -26,6 +26,6 @@ describe('Tree', () => {
     expect(html).toContain('aria-label="actions for proj"');
     expect(html).toContain('aria-label="actions for s1"');
     expect(html).toContain('search-slot');
-    expect(html.match(/aria-haspopup="menu"/g)?.length).toBe(4);
+    expect(html.match(/aria-haspopup="true"/g)?.length).toBe(4);
   });
 });

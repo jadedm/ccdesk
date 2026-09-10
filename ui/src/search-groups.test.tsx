@@ -21,7 +21,7 @@ describe('search results', () => {
   });
 
   it('renders the box empty until a query is typed', () => {
-    const html = renderToStaticMarkup(<Search index={index} run={async () => ({ results: [], scanned: 0, truncated: false })} onOpen={() => {}} />);
+    const html = renderToStaticMarkup(<Search index={index} run={async () => ({ results: [], scanned: 0, skipped: 0, truncated: false })} onOpen={() => {}} />);
     expect(html).toContain('aria-label="search sessions"');
     expect(html).not.toContain('search-results');
   });

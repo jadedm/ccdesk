@@ -15,12 +15,21 @@ export type SessionMeta = { messages: number; model: string | null };
  * slugs over 200 characters with a hash; paths that long are not handled here. */
 export const projectSlug = (cwd: string): string => cwd.replace(/[^A-Za-z0-9]/g, '-');
 
+// realpath is a blocking syscall and a search asks for it once per session; the answer for a
+// directory does not change while the app runs.
+const realpaths = new Map<string, string>();
+
 const resolved = (cwd: string): string => {
+  const cached = realpaths.get(cwd);
+  if (cached) return cached;
+  let real = cwd;
   try {
-    return realpathSync(cwd);
+    real = realpathSync(cwd);
   } catch {
-    return cwd;
+    real = cwd;
   }
+  realpaths.set(cwd, real);
+  return real;
 };
 
 export const sessionFile = (cwd: string, sessionId: string, home = homedir()): string =>

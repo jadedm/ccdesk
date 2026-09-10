@@ -61,4 +61,4 @@ export type SearchHit = {
   lastModified: number;
 };
 
-export type SearchResponse = { results: SearchHit[]; scanned: number; truncated: boolean };
+export type SearchResponse = { results: SearchHit[]; scanned: number; skipped: number; truncated: boolean };

@@ -127,9 +127,15 @@ const SessionRow = ({ id, title, meta, sessions, activeKey, onOpen, actions, ren
   );
 };
 
-/** Deleting only forgets the grouping; the CLI keeps every transcript. */
-const confirmDelete = (kind: string, name: string): boolean =>
-  window.confirm(`Delete the ${kind} "${name}"? Its sessions stay on disk and reappear under Unfiled; only the grouping is forgotten.`);
+/** Deleting only forgets the grouping; the CLI keeps every transcript. A folder that carries
+ * its own directory also carries the only reference to it, so its sessions stop being listed
+ * until another folder points there again. The text says which case this is. */
+const confirmDelete = (kind: string, name: string, ownDirectory?: string): boolean => {
+  const fate = ownDirectory
+    ? `Its sessions stay on disk in ${ownDirectory}, but they will not be listed until a folder points there again.`
+    : 'Its sessions stay on disk and reappear under Unfiled.';
+  return window.confirm(`Delete the ${kind} "${name}"? ${fate} Only the grouping is forgotten.`);
+};
 
 export const Tree = (p: TreeProps) => {
   const [adding, setAdding] = useState<string | null>(null);
@@ -187,7 +193,7 @@ export const Tree = (p: TreeProps) => {
                 <button className="mini" title="new session" onClick={() => setAdding(`session:${folder.id}`)}>+ session</button>
                 <RowMenu label={`actions for ${folder.name}`} actions={[
                   { label: 'Rename', onPick: () => setRenaming(folder.id) },
-                  { label: 'Delete folder', danger: true, onPick: () => confirmDelete('folder', folder.name) && p.organise.deleteFolder(folder.id) },
+                  { label: 'Delete folder', danger: true, onPick: () => confirmDelete('folder', folder.name, folder.cwd) && p.organise.deleteFolder(folder.id) },
                 ]} />
               </div>
               {folder.cwd && <div className="cwd" title={folder.cwd}>{short(folder.cwd)}</div>}

@@ -16,11 +16,27 @@ const textOf = (content: unknown): string[] => {
   return content.filter((c): c is { type: 'text'; text: string } => c?.type === 'text' && typeof c.text === 'string').map((c) => c.text);
 };
 
-const isPrompt = (record: Record_): boolean => {
-  if (record.type !== 'user') return false;
-  const texts = textOf(record.message?.content);
-  return texts.length > 0 && startsTurn(texts[0], record.isMeta === true);
+/** How many turns this record opens. The reducer places one user block per text part, so a
+ * record with two prompts opens two turns. */
+const turnsOpened = (record: Record_): number => {
+  if (record.type !== 'user') return 0;
+  return textOf(record.message?.content).filter((t) => startsTurn(t, record.isMeta === true)).length;
 };
+
+/** True when the record puts anything in the transcript. The reducer opens a turn for the
+ * first such block even when no prompt came before it. */
+const rendersSomething = (record: Record_): boolean => {
+  if (record.type === 'assistant') return textOf(record.message?.content).length > 0 || hasNonText(record);
+  return searchable(record).length > 0 || machineryOf(record).length > 0;
+};
+
+const hasNonText = (record: Record_): boolean => {
+  const content = record.message?.content;
+  return Array.isArray(content) && content.some((c) => c?.type === 'thinking' || c?.type === 'tool_use');
+};
+
+const machineryOf = (record: Record_): string[] =>
+  record.type === 'user' && !record.isMeta ? textOf(record.message?.content).filter((t) => machineryTag(t)) : [];
 
 /** The text a reader can actually see in this record, in the form they see it. */
 const searchable = (record: Record_): string[] => {
@@ -40,7 +56,7 @@ export const snippetAround = (text: string, index: number, radius = 60): string 
 /** First hit in a transcript, or null. Reads the whole file only until the hit. */
 export const searchFile = async (file: string, query: string): Promise<Hit | null> => {
   const needle = query.toLowerCase();
-  let turn = 0;
+  const turns: Turns = { count: 0 };
   let remainder = '';
   const stream = createReadStream(file, { encoding: 'utf8' });
   try {
@@ -48,17 +64,19 @@ export const searchFile = async (file: string, query: string): Promise<Hit | nul
       const lines = (remainder + (chunk as string)).split('\n');
       remainder = lines.pop() ?? '';
       for (const line of lines) {
-        const hit = searchLine(line, needle, () => turn, () => turn++);
+        const hit = searchLine(line, needle, turns);
         if (hit) return hit;
       }
     }
-    return searchLine(remainder, needle, () => turn, () => turn++);
+    return searchLine(remainder, needle, turns);
   } finally {
     stream.destroy();
   }
 };
 
-const searchLine = (line: string, needle: string, currentTurn: () => number, nextTurn: () => void): Hit | null => {
+type Turns = { count: number };
+
+const searchLine = (line: string, needle: string, turns: Turns): Hit | null => {
   if (line === '') return null;
   let record: Record_;
   try {
@@ -69,10 +87,13 @@ const searchLine = (line: string, needle: string, currentTurn: () => number, nex
   if (record.type !== 'user' && record.type !== 'assistant') return null;
   // Subagent traffic never reaches the rendered transcript, so it is neither counted nor searched.
   if (typeof record.parent_tool_use_id === 'string' && record.parent_tool_use_id !== '') return null;
-  if (isPrompt(record)) nextTurn();
+  const opened = turnsOpened(record);
+  // A transcript that starts with a reply still has a first turn to hold it.
+  if (opened === 0 && turns.count === 0 && rendersSomething(record)) turns.count = 1;
+  turns.count += opened;
   for (const text of searchable(record)) {
     const index = text.toLowerCase().indexOf(needle);
-    if (index !== -1) return { turn: Math.max(1, currentTurn()), snippet: snippetAround(text, index) };
+    if (index !== -1) return { turn: Math.max(1, turns.count), snippet: snippetAround(text, index) };
   }
   return null;
 };

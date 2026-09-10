@@ -84,9 +84,11 @@ a { color: var(--accent); }
 .tab-close:hover { color: var(--accent); background: var(--surface2); }
 
 /* Row menus, inline rename and search */
-.rowmenu { position: relative; flex: none; }
-.rowmenu-list { position: absolute; right: 0; top: 100%; z-index: 5; margin: 2px 0 0; padding: 4px; list-style: none; min-width: 150px; background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12); }
+.rowmenu { flex: none; }
+/* Fixed, not absolute: .row and .rail both clip their overflow. */
+.rowmenu-list { position: fixed; z-index: 20; padding: 4px; min-width: 150px; background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); }
 .menuitem { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--ink2); font: 400 12px var(--mono); padding: 5px 8px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.menuitem:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .menuitem:hover { background: var(--surface2); color: var(--ink); }
 .menuitem.danger { color: var(--error); }
 .inline-name { width: 100%; font: 400 13px var(--mono); padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--ink); }

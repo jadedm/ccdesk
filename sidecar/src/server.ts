@@ -138,6 +138,7 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     }
     const hits: SearchHit[] = [];
     let scanned = 0;
+    let skipped = 0;
     const seen = new Set<string>();
     for (const [dir, workspaceId] of dirs) {
       const list = await listSessions({ dir }).catch(() => []);
@@ -146,15 +147,21 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
         seen.add(s.sessionId);
         scanned++;
         const title = s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8);
-        const hit = matchSummary(s, q) ?? (await searchFile(sessionFile(s.cwd ?? dir, s.sessionId), q).catch(() => null));
+        const hit = matchSummary(s, q) ?? (await searchFile(sessionFile(s.cwd ?? dir, s.sessionId), q).catch(() => 'unreadable' as const));
+        if (hit === 'unreadable') {
+          skipped++;
+          continue;
+        }
         if (!hit) continue;
         hits.push({ sessionId: s.sessionId, cwd: s.cwd ?? dir, workspaceId, title, turn: hit.turn, snippet: hit.snippet, lastModified: s.lastModified });
       }
     }
     const sorted = sortHits(hits);
-    return { results: sorted.slice(0, MAX_RESULTS), scanned, truncated: sorted.length > MAX_RESULTS };
+    return { results: sorted.slice(0, MAX_RESULTS), scanned, skipped, truncated: sorted.length > MAX_RESULTS };
   };
 
+  // HTTP routes take the token as a bearer header only. The WebSocket upgrade is the one
+  // place a browser cannot set a header, so that route alone accepts it as a query parameter.
   const authorized = (req: IncomingMessage): boolean => (req.headers.authorization ?? '') === `Bearer ${token}`;
   const upgradeAuthorized = (url: URL): boolean => url.searchParams.get('token') === token;
 

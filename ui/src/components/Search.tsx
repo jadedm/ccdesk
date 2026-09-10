@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SearchHit, SearchResponse, WorkspaceIndex } from '../../../shared/protocol.ts';
 import { groupHits } from '../search-groups.ts';
 
@@ -15,13 +15,20 @@ export const Search = ({ index, run, onOpen }: Props) => {
   // Busy is derived: the box holds a query the last answer does not cover yet.
   const busy = trimmed.length >= 2 && state.q !== trimmed;
 
+  const latest = useRef('');
   useEffect(() => {
     const query = q.trim();
-    if (query.length < 2) return;
+    latest.current = query;
+    if (query.length < 2) {
+      setState((s) => (s.error ? { ...s, error: null } : s));
+      return;
+    }
     const timer = setTimeout(() => {
+      // A slower earlier query must not overwrite a newer answer.
+      const keep = (write: () => void) => latest.current === query && write();
       run(query)
-        .then((response) => setState({ q: query, response, error: null }))
-        .catch((e: unknown) => setState({ q: query, response: null, error: String(e) }));
+        .then((response) => keep(() => setState({ q: query, response, error: null })))
+        .catch((e: unknown) => keep(() => setState({ q: query, response: null, error: String(e) })));
     }, 250);
     return () => clearTimeout(timer);
   }, [q, run]);
@@ -34,7 +41,7 @@ export const Search = ({ index, run, onOpen }: Props) => {
       {state.error && !busy && <div className="search-note error">{state.error}</div>}
       {state.response && !busy && trimmed.length >= 2 && (
         <div className="search-results">
-          {groups.length === 0 && <div className="search-note">no matches in {state.response.scanned} sessions</div>}
+          {groups.length === 0 && <div className="search-note">no matches in {state.response.scanned} sessions{state.response.skipped > 0 ? `, ${state.response.skipped} unreadable` : ''}</div>}
           {groups.map((g) => (
             <div key={g.name} className="search-group">
               <div className="search-group-name">{g.name}</div>
