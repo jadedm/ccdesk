@@ -80,7 +80,7 @@ describe('session metadata', () => {
   });
 
   it('derives the CLI project slug and session file path from the resolved directory', () => {
-    expect(projectSlug('/Users/x/Documents/work/manishj/test')).toBe('-Users-x-Documents-work-manishj-test');
+    expect(projectSlug('/Users/ada/code/widgets')).toBe('-Users-ada-code-widgets');
     expect(projectSlug('/a/.claude/worktrees/b')).toBe('-a--claude-worktrees-b');
     expect(sessionFile('/w', 'abc', '/home/u')).toBe('/home/u/.claude/projects/-w/abc.jsonl');
     expect(sessionFile('/tmp', 'abc', '/home/u')).toBe(`/home/u/.claude/projects/${projectSlug(realpathSync('/tmp'))}/abc.jsonl`);
