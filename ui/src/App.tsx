@@ -9,7 +9,7 @@ import { Tree } from './components/Tree.tsx';
 import { closeDecision, cycle } from './tabs.ts';
 import { insideTauri } from './api.ts';
 import { folderCwd, mergeListings, workspaceDirs, type ListedSession } from './cwd.ts';
-import { clampRail, clampText, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
+import { clampRail, clampText, gridColumns, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { initialState, reducer } from './state.ts';
 
 let keyCounter = 0;
@@ -165,6 +165,11 @@ export default function App() {
         return;
       }
       const meta = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
+      if (meta && e.key === 'b' && !typing()) {
+        e.preventDefault();
+        setPrefsState((p) => ({ ...p, railCollapsed: !p.railCollapsed }));
+        return;
+      }
       if (!meta || e.key !== 'w' || insideTauri() || typing()) return;
       e.preventDefault();
       closeActive();
@@ -219,11 +224,14 @@ export default function App() {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  const style = { '--rail': `${prefs.railWidth}px`, '--prose-size': `${prefs.textSize}px` } as React.CSSProperties;
+  // The inline template is the one source of truth for the columns; the stylesheet sets none.
+  const style = { '--prose-size': `${prefs.textSize}px`, gridTemplateColumns: gridColumns(prefs.railCollapsed, prefs.railWidth) } as React.CSSProperties;
 
   return (
     <div className={prefs.bionic ? 'app bionic' : 'app'} style={style}>
+      {!prefs.railCollapsed && (
       <Tree
+        onCollapse={() => setPrefs({ railCollapsed: true })}
         index={index}
         unfiled={unfiled}
         sessions={state.sessions}
@@ -233,9 +241,15 @@ export default function App() {
         onNewSession={onNewSession}
         onOpenSession={(ws, folder, id, title, listedIn) => void onOpenSession(ws, folder, id, title, listedIn)}
       />
-      <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
+      )}
+      {!prefs.railCollapsed && (
+        <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
+      )}
       <main className="main">
         <div className="head">
+          {prefs.railCollapsed && (
+            <button className="rail-show" title="show sidebar (Cmd+B)" onClick={() => setPrefs({ railCollapsed: false })}>sessions</button>
+          )}
           <Tabs open={state.open} sessions={state.sessions} activeKey={state.activeKey} onActivate={(key) => dispatch({ type: 'activate', key })} onClose={closeTab} />
           {banner && (
             <div className={discoveryError || socketState !== 'open' ? 'banner' : 'banner info'} onClick={() => setAppError(null)}>
