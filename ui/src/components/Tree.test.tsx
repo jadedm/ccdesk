@@ -8,7 +8,7 @@ const organise = {
   setWorkspaceCwd: () => {}, setFolderCwd: () => {},
 };
 
-const describeDirectory = async (path: string) => ({ path, exists: true, isDirectory: true, sessions: 0 });
+const describeDirectory = async (path: string) => ({ path, exists: true, isDirectory: true, readable: true, sessions: 0, problem: null });
 
 const index = { version: 1 as const, workspaces: [{ id: 'w', name: 'Work', cwd: '/w', folders: [{ id: 'f', name: 'proj', sessions: [{ sessionId: 's1', cwd: '/w' }] }] }] };
 

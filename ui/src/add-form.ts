@@ -27,11 +27,15 @@ export const reasonNotReady = (rules: AddRules, fields: AddFields): string | nul
   return null;
 };
 
-/** What the directory report means for someone about to save. */
-export const directoryNote = (report: { exists: boolean; isDirectory: boolean; sessions: number } | null): { text: string; tone: 'info' | 'warn' } | null => {
+export type Report = { exists: boolean; isDirectory: boolean; readable: boolean; sessions: number; problem: 'missing' | 'not-a-directory' | 'unreadable' | null };
+
+/** What the directory report means for someone about to save. An unreadable directory is
+ * reported, not refused: on macOS that is usually a permission prompt away. */
+export const directoryNote = (report: Report | null): { text: string; tone: 'info' | 'warn' } | null => {
   if (!report) return null;
-  if (!report.exists) return { text: 'No such directory. Check the path before saving.', tone: 'warn' };
-  if (!report.isDirectory) return { text: 'That is a file, not a directory.', tone: 'warn' };
+  if (report.problem === 'missing') return { text: 'No such directory. Check the path before saving.', tone: 'warn' };
+  if (report.problem === 'not-a-directory') return { text: 'That is a file, not a directory.', tone: 'warn' };
+  if (report.problem === 'unreadable') return { text: 'Cannot read that directory yet. macOS may ask for permission the first time it is used.', tone: 'warn' };
   if (report.sessions === 0) return { text: 'No Claude Code sessions here yet. New ones will be created in it.', tone: 'info' };
   return { text: `${report.sessions} Claude Code session${report.sessions === 1 ? '' : 's'} already here.`, tone: 'info' };
 };
@@ -44,7 +48,7 @@ export const basename = (path: string): string => path.trim().replace(/\/+$/, ''
 /** The name that will be saved: what was typed, or the directory's own name. */
 export const effectiveName = (fields: AddFields): string => (fields.name.trim() !== '' ? fields.name.trim() : basename(fields.cwd));
 
-export type DirectoryState = { report: { exists: boolean; isDirectory: boolean; sessions: number } | null; pending: boolean };
+export type DirectoryState = { report: Report | null; pending: boolean };
 
 /** Everything standing between the user and a save, in the order they should hear it. A
  * directory that does not exist blocks the save; the report is not merely advisory. */
@@ -54,7 +58,9 @@ export const blockingReason = (rules: AddRules, fields: AddFields, dir: Director
   if (fields.cwd.trim() === '') return null;
   if (dir.pending) return 'Checking that directory…';
   if (!dir.report) return null;
-  if (!dir.report.exists) return 'No such directory. Check the path before saving.';
-  if (!dir.report.isDirectory) return 'That is a file, not a directory.';
+  if (dir.report.problem === 'missing') return 'No such directory. Check the path before saving.';
+  if (dir.report.problem === 'not-a-directory') return 'That is a file, not a directory.';
+  // 'unreadable' is reported by directoryNote but does not block: it is usually a permission
+  // prompt away, and refusing it would refuse the user's own Documents folder.
   return null;
 };

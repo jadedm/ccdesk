@@ -9,7 +9,7 @@ export type MenuAction = { label: string; onPick: () => void; danger?: boolean }
 export type RowMenuHandle = { openAt: (x: number, y: number) => void };
 
 export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label: string }>(({ actions, label }, handle) => {
-  const [at, setAt] = useState<{ top: number; right: number; above: boolean } | null>(null);
+  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
 
@@ -27,7 +27,6 @@ export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label:
     return {
       top: Math.round(above ? Math.max(4, box.top - height) : box.bottom + 2),
       right: Math.round(window.innerWidth - box.right),
-      above,
     };
   }, [actions.length]);
 
@@ -65,13 +64,12 @@ export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label:
     openAt: (x: number, y: number) => {
       const height = 12 + actions.length * 27;
       // The list hangs from its right edge, so near the left edge it must be pushed right or
-      // it opens off-screen. 170px covers the 150px minimum plus its padding and border.
-      const width = 170;
+      // it opens off-screen. The stylesheet caps it at 240px plus padding and border.
+      const width = 250;
       const right = Math.min(Math.max(4, window.innerWidth - x), window.innerWidth - width - 4);
       setAt({
         top: Math.round(Math.max(4, Math.min(y, window.innerHeight - height - 4))),
         right: Math.round(Math.max(4, right)),
-        above: false,
       });
     },
   }), [actions.length]);

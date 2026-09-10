@@ -23,11 +23,12 @@ describe('add form rules', () => {
 
   it('turns a directory report into something a user can act on', () => {
     expect(directoryNote(null)).toBeNull();
-    expect(directoryNote({ exists: false, isDirectory: false, sessions: 0 })).toMatchObject({ tone: 'warn' });
-    expect(directoryNote({ exists: true, isDirectory: false, sessions: 0 })?.text).toContain('file');
-    expect(directoryNote({ exists: true, isDirectory: true, sessions: 0 })?.text).toContain('No Claude Code sessions');
-    expect(directoryNote({ exists: true, isDirectory: true, sessions: 1 })?.text).toBe('1 Claude Code session already here.');
-    expect(directoryNote({ exists: true, isDirectory: true, sessions: 7 })?.text).toBe('7 Claude Code sessions already here.');
+    expect(directoryNote({ exists: false, isDirectory: false, readable: false, sessions: 0, problem: 'missing' })).toMatchObject({ tone: 'warn' });
+    expect(directoryNote({ exists: true, isDirectory: false, readable: true, sessions: 0, problem: 'not-a-directory' })?.text).toContain('file');
+    expect(directoryNote({ exists: true, isDirectory: true, readable: false, sessions: 0, problem: 'unreadable' })?.text).toContain('permission');
+    expect(directoryNote({ exists: true, isDirectory: true, readable: true, sessions: 0, problem: null })?.text).toContain('No Claude Code sessions');
+    expect(directoryNote({ exists: true, isDirectory: true, readable: true, sessions: 1, problem: null })?.text).toBe('1 Claude Code session already here.');
+    expect(directoryNote({ exists: true, isDirectory: true, readable: true, sessions: 7, problem: null })?.text).toBe('7 Claude Code sessions already here.');
   });
 
   it('knows when a form holds work worth protecting', () => {
@@ -51,7 +52,7 @@ describe('name from the directory', () => {
 
 describe('what blocks a save', () => {
   const ws = rulesFor('workspace');
-  const ready = { report: { exists: true, isDirectory: true, sessions: 3 }, pending: false };
+  const ready = { report: { exists: true, isDirectory: true, readable: true, sessions: 3, problem: null as null }, pending: false };
 
   it('accepts a directory whose name stands in for the missing name', () => {
     expect(blockingReason(ws, { name: '', cwd: '/a/b/proj' }, ready)).toBeNull();
@@ -59,8 +60,10 @@ describe('what blocks a save', () => {
   });
 
   it('refuses to save a directory that does not exist or is a file', () => {
-    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: false, isDirectory: false, sessions: 0 }, pending: false })).toContain('No such directory');
-    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: true, isDirectory: false, sessions: 0 }, pending: false })).toContain('file');
+    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: false, isDirectory: false, readable: false, sessions: 0, problem: 'missing' }, pending: false })).toContain('No such directory');
+    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: true, isDirectory: false, readable: true, sessions: 0, problem: 'not-a-directory' }, pending: false })).toContain('file');
+    // A directory the app cannot read yet is reported, not refused: macOS asks on first use.
+    expect(blockingReason(ws, { name: 'x', cwd: '/a/b' }, { report: { exists: true, isDirectory: true, readable: false, sessions: 0, problem: 'unreadable' }, pending: false })).toBeNull();
   });
 
   it('waits for the check rather than saving into the unknown', () => {

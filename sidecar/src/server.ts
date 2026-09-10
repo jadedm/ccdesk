@@ -45,10 +45,12 @@ const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> 
   return parsed as Record<string, unknown>;
 };
 
-const requireCwd = (value: string | null): string => {
-  if (!value || !value.startsWith('/')) throw badRequest('cwd_required', 'absolute cwd query parameter required');
+const requireAbsolute = (value: string | null, field: string): string => {
+  if (!value || !value.startsWith('/')) throw badRequest(`${field}_required`, `absolute ${field} query parameter required`);
   return value;
 };
+
+const requireCwd = (value: string | null): string => requireAbsolute(value, 'cwd');
 
 // The UI runs on another origin: the Vite dev server in a browser, or the Tauri webview
 // (tauri://localhost on macOS). The bearer token is the access control, so any origin may
@@ -85,20 +87,33 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
   const routes: Route[] = [
     route('GET', '/health', async () => ({ ok: true, sdkVersion: config.sdkVersion })),
     route('GET', '/index', async () => store.snapshot()),
-    route('POST', '/workspaces', async (_req, _p, body) => store.createWorkspace(body.name, body.cwd)),
-    route('POST', '/workspaces/:wid/folders', async (_req, p, body) => store.createFolder(p.wid, body.name, body.cwd)),
+    route('POST', '/workspaces', async (_req, _p, body) => {
+      await requireUsableDirectory(body.cwd);
+      return store.createWorkspace(body.name, body.cwd);
+    }),
+    route('POST', '/workspaces/:wid/folders', async (_req, p, body) => {
+      if (body.cwd) await requireUsableDirectory(body.cwd);
+      return store.createFolder(p.wid, body.name, body.cwd);
+    }),
     route('POST', '/folders/:fid/sessions', async (_req, p, body) => store.fileSession(p.fid, body.sessionId, body.cwd)),
-    route('GET', '/directory', async (_req, _p, _b, url) => describeDirectory(requireCwd(url.searchParams.get('path')))),
-    route('PATCH', '/workspaces/:wid', async (_req, p, body) =>
-      body.cwd === undefined ? store.renameWorkspace(p.wid, body.name) : store.setWorkspaceCwd(p.wid, body.cwd),
-    ),
+    route('GET', '/directory', async (_req, _p, _b, url) => describeDirectory(requireAbsolute(url.searchParams.get('path'), 'path'))),
+    route('PATCH', '/workspaces/:wid', async (_req, p, body) => {
+      // Both fields may be sent; neither is silently dropped.
+      if (body.cwd !== undefined) await requireUsableDirectory(body.cwd);
+      const afterCwd = body.cwd === undefined ? null : await store.setWorkspaceCwd(p.wid, body.cwd);
+      if (body.name === undefined) return afterCwd ?? store.renameWorkspace(p.wid, body.name);
+      return store.renameWorkspace(p.wid, body.name);
+    }),
     route('DELETE', '/workspaces/:wid', async (_req, p) => {
       await store.deleteWorkspace(p.wid);
       return { ok: true };
     }),
-    route('PATCH', '/folders/:fid', async (_req, p, body) =>
-      body.cwd === undefined ? store.renameFolder(p.fid, body.name) : store.setFolderCwd(p.fid, body.cwd),
-    ),
+    route('PATCH', '/folders/:fid', async (_req, p, body) => {
+      if (body.cwd) await requireUsableDirectory(body.cwd);
+      const afterCwd = body.cwd === undefined ? null : await store.setFolderCwd(p.fid, body.cwd);
+      if (body.name === undefined) return afterCwd ?? store.renameFolder(p.fid, body.name);
+      return store.renameFolder(p.fid, body.name);
+    }),
     route('DELETE', '/folders/:fid', async (_req, p) => {
       await store.deleteFolder(p.fid);
       return { ok: true };
@@ -130,6 +145,15 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
 
   // HTTP routes take the token as a bearer header only. The WebSocket upgrade is the one
   // place a browser cannot set a header, so that route alone accepts it as a query parameter.
+  /** Closes the gap between the form's check and the save: the directory may have gone. An
+   * unreadable one is allowed through, since it is probably a permission prompt away. */
+  const requireUsableDirectory = async (cwd: unknown): Promise<void> => {
+    if (typeof cwd !== 'string' || !cwd.startsWith('/')) return;
+    const report = await describeDirectory(cwd);
+    if (report.problem === 'missing') throw badRequest('directory_not_found', `no such directory: ${cwd}`);
+    if (report.problem === 'not-a-directory') throw badRequest('not_a_directory', `${cwd} is a file`);
+  };
+
   // Every directory the index knows about, each scanned once even when shared by folders.
   const search = async (q: string): Promise<SearchResponse> => {
     if (q.length < 2) throw badRequest('query_too_short', 'at least two characters');
