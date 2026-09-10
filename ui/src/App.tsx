@@ -4,7 +4,10 @@ import { Api, Socket, discoverSidecar, type SocketState } from './api.ts';
 import { Composer } from './components/Composer.tsx';
 import { Transcript } from './components/Transcript.tsx';
 import type { View } from './transcript/view.ts';
+import { Tabs } from './components/Tabs.tsx';
 import { Tree } from './components/Tree.tsx';
+import { closeDecision, cycle } from './tabs.ts';
+import { insideTauri } from './api.ts';
 import { folderCwd, mergeListings, workspaceDirs, type ListedSession } from './cwd.ts';
 import { clampRail, clampText, loadPrefs, savePrefs, type Prefs } from './prefs.ts';
 import { initialState, reducer } from './state.ts';
@@ -133,6 +136,50 @@ export default function App() {
     dispatch({ type: 'open_history', key: `hist-${sessionId}`, sessionId, cwd, folderId: folder?.id ?? null, title, records });
   };
 
+  // Any live session (idle ones still hold a query on the sidecar) is stopped on close; a
+  // running one asks first. It can be resumed by id from the tree. Saved ones leave memory.
+  const closeTab = useCallback((key: string) => {
+    const session = stateRef.current.sessions[key];
+    if (!session) return;
+    const decision = closeDecision(session.status, () => window.confirm(`"${session.title}" is still working. Close it and stop the session?`));
+    if (!decision.close) return;
+    delete pendingFile.current[key];
+    if (decision.stop) send({ type: 'stop', key });
+    dispatch({ type: 'close', key });
+  }, [send]);
+
+  // Cmd+W in the app arrives from the native menu (Close Tab); in a browser it is a keydown.
+  // Ctrl+Tab cycles in both. Shortcuts are ignored while typing in a field.
+  useEffect(() => {
+    const closeActive = () => {
+      const key = stateRef.current.activeKey;
+      if (key) closeTab(key);
+    };
+    const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName ?? '');
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault();
+        const next = cycle(stateRef.current.open, stateRef.current.activeKey, e.shiftKey ? -1 : 1);
+        if (!next) return;
+        dispatch({ type: 'activate', key: next });
+        return;
+      }
+      const meta = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
+      if (!meta || e.key !== 'w' || insideTauri() || typing()) return;
+      e.preventDefault();
+      closeActive();
+    };
+    window.addEventListener('keydown', onKey);
+    let unlisten: (() => void) | undefined;
+    if (insideTauri()) {
+      void import('@tauri-apps/api/event').then(({ listen }) => listen('close-tab', () => { if (!typing()) closeActive(); })).then((off) => { unlisten = off; });
+    }
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      unlisten?.();
+    };
+  }, [closeTab]);
+
   const onRename = async (title: string) => {
     setRenaming(false);
     if (!api || !active?.sessionId || title.trim() === '' || title === active.title) return;
@@ -188,7 +235,8 @@ export default function App() {
       />
       <div className="splitter" onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag} title="drag to resize" />
       <main className="main">
-        <div>
+        <div className="head">
+          <Tabs open={state.open} sessions={state.sessions} activeKey={state.activeKey} onActivate={(key) => dispatch({ type: 'activate', key })} onClose={closeTab} />
           {banner && (
             <div className={discoveryError || socketState !== 'open' ? 'banner' : 'banner info'} onClick={() => setAppError(null)}>
               {banner}

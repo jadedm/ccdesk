@@ -21,6 +21,25 @@ describe('state: resuming a saved session', () => {
     expect(sent.kind === 'user' && sent.at && !Number.isNaN(Date.parse(sent.at))).toBe(true);
   });
 
+  it('keeps a tab per open session, reuses it on reopen and on resume, and closes to a neighbour', () => {
+    let s = reducer(initialState, { type: 'open_history', key: 'hist-a', sessionId: 'a', cwd: '/w', folderId: null, title: 'A', records: [] });
+    s = reducer(s, { type: 'new_live', key: 'live-b', cwd: '/w', folderId: null, title: 'B', resume: null });
+    s = reducer(s, { type: 'open_history', key: 'hist-c', sessionId: 'c', cwd: '/w', folderId: null, title: 'C', records: [] });
+    s = reducer(s, { type: 'open_history', key: 'hist-a', sessionId: 'a', cwd: '/w', folderId: null, title: 'A', records: [] });
+    expect(s.open).toEqual(['hist-a', 'live-b', 'hist-c']);
+    expect(s.activeKey).toBe('hist-a');
+    s = reducer(s, { type: 'activate', key: 'hist-a' });
+    s = reducer(s, { type: 'new_live', key: 'live-a', cwd: '/w', folderId: null, title: 'A', resume: 'a', fromKey: 'hist-a' });
+    expect(s.open).toEqual(['live-a', 'live-b', 'hist-c']);
+    expect(s.sessions['hist-a']).toBeUndefined();
+    s = reducer(s, { type: 'activate', key: 'live-b' });
+    s = reducer(s, { type: 'close', key: 'live-b' });
+    expect(s.open).toEqual(['live-a', 'hist-c']);
+    expect(s.activeKey).toBe('live-a');
+    expect(s.sessions['live-b']).toBeUndefined();
+    expect(reducer(s, { type: 'close', key: 'nope' })).toBe(s);
+  });
+
   it('starts a fresh session with an empty transcript', () => {
     const live = reducer(initialState, { type: 'new_live', key: 'live-2', cwd: '/w', folderId: 'f', title: 'New', resume: null });
     expect(live.sessions['live-2'].transcript.turns).toEqual([]);
