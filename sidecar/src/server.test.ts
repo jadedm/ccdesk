@@ -162,6 +162,30 @@ describe('sidecar http', () => {
     expect(index.workspaces[0].folders[1].cwd).toBe(emptyDir);
   });
 
+  it('renames, moves, unfiles and deletes through the routes', async () => {
+    const ws = await (await call('POST', '/workspaces', { name: 'Org', cwd: emptyDir })).json();
+    const a = await (await call('POST', `/workspaces/${ws.id}/folders`, { name: 'a' })).json();
+    const b = await (await call('POST', `/workspaces/${ws.id}/folders`, { name: 'b' })).json();
+    await call('POST', `/folders/${a.id}/sessions`, { sessionId: 'org-1', cwd: emptyDir });
+    expect((await (await call('PATCH', `/workspaces/${ws.id}`, { name: 'Organised' })).json()).name).toBe('Organised');
+    expect((await (await call('PATCH', `/folders/${a.id}`, { name: 'alpha' })).json()).name).toBe('alpha');
+    expect((await (await call('PATCH', `/folders/${a.id}/sessions/org-1`, { folderId: b.id })).json()).sessions).toEqual([{ sessionId: 'org-1', cwd: emptyDir }]);
+    expect((await call('DELETE', `/folders/${b.id}/sessions/org-1`)).status).toBe(200);
+    expect((await call('DELETE', `/folders/${b.id}/sessions/org-1`)).status).toBe(404);
+    expect((await call('DELETE', `/folders/${a.id}`)).status).toBe(200);
+    expect((await call('DELETE', `/workspaces/${ws.id}`)).status).toBe(200);
+    expect((await call('DELETE', `/workspaces/${ws.id}`)).status).toBe(404);
+  });
+
+  it('search rejects short queries and scans the index directories', async () => {
+    expect((await call('GET', '/search?q=a')).status).toBe(400);
+    const res = await call('GET', '/search?q=zzqq');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { results: unknown[]; scanned: number; truncated: boolean };
+    expect(body.results).toEqual([]);
+    expect(body.truncated).toBe(false);
+  });
+
   it('returns 400 for malformed json and 404 for unknown routes', async () => {
     const res = await fetch(base + '/workspaces', {
       method: 'POST',

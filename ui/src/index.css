@@ -83,6 +83,27 @@ a { color: var(--accent); }
 .tab-close { border: 0; background: none; color: var(--faint); cursor: pointer; padding: 0 2px; font: 400 14px/1 var(--mono); border-radius: 3px; }
 .tab-close:hover { color: var(--accent); background: var(--surface2); }
 
+/* Row menus, inline rename and search */
+.rowmenu { flex: none; }
+/* Fixed, not absolute: .row and .rail both clip their overflow. */
+.rowmenu-list { position: fixed; z-index: 20; padding: 4px; min-width: 150px; background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18); }
+.menuitem { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--ink2); font: 400 12px var(--mono); padding: 5px 8px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.menuitem:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.menuitem:hover { background: var(--surface2); color: var(--ink); }
+.menuitem.danger { color: var(--error); }
+.inline-name { width: 100%; font: 400 13px var(--mono); padding: 2px 6px; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--ink); }
+.search { margin: 0 6px 12px; }
+.search input { width: 100%; font: 400 12px var(--mono); padding: 6px 8px; border: 1px solid var(--border2); border-radius: 6px; background: var(--bg); color: var(--ink); outline: none; }
+.search input:focus { border-color: var(--accent); }
+.search-note { font: 400 10.5px var(--mono); color: var(--faint); padding: 6px 4px; }
+.search-note.error { color: var(--error); }
+.search-results { max-height: 40vh; overflow-y: auto; margin-top: 6px; }
+.search-group-name { font: 400 10px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--faint); padding: 6px 4px 3px; }
+.search-hit { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.search-hit:hover { background: var(--surface2); }
+.search-hit .st { display: block; font: 400 13px/1.3 var(--serif); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-hit .sm { display: block; font: 400 10.5px/1.5 var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Main */
 .main { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; height: 100%; }
 .topbar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; padding: 14px 28px 12px; border-bottom: 1px solid var(--border); font: 400 11px var(--mono); color: var(--muted); }

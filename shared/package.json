@@ -1,0 +1,6 @@
+{
+  "name": "@ccdesk/shared",
+  "private": true,
+  "type": "module",
+  "//": "Not a workspace package: it exists so NodeNext treats these .ts files as ESM. Both packages import the files by relative path."
+}
