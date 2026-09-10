@@ -6,7 +6,7 @@ import type { Block, Transcript as TranscriptModel } from '../transcript/blocks.
 import { toolDisplayName } from '../transcript/summaries.ts';
 import type { Theme } from '../transcript/mermaid.ts';
 import { keepAtBottom, visible, type View } from '../transcript/view.ts';
-import { fenceText, isMermaid } from '../transcript/mermaid-block.ts';
+import { fenceText, isMermaid, isMermaidFence } from '../transcript/mermaid-block.ts';
 import { Diagram } from './Diagram.tsx';
 
 const clock = (iso?: string): string => {
@@ -66,8 +66,14 @@ const bionicComponents: Components = {
 };
 
 /** A mermaid fence becomes a diagram; every other fence keeps its code rendering. Bionic mode
- * never touches either, since neither is prose. */
+ * never touches either, since neither is prose.
+ *
+ * The `pre` override matters as much as the `code` one: markdown wraps every fence in a `pre`, and
+ * a diagram left inside that wrapper is drawn in the code-block box, with a `div` inside a `pre`
+ * and the source `pre` nested inside that. */
 const codeComponents = (theme: Theme, streaming: boolean): Components => ({
+  pre: ({ children, node: _node, ...rest }) =>
+    isMermaidFence(children) ? <>{children}</> : <pre {...rest}>{children}</pre>,
   code: ({ className, children, node: _node, ...rest }) =>
     isMermaid(className) ? <Diagram source={fenceText(children)} theme={theme} streaming={streaming} /> : <code className={className} {...rest}>{children}</code>,
 });
