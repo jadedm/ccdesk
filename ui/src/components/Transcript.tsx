@@ -120,9 +120,11 @@ type TranscriptProps = {
   sessionKey: string;
   /** True while a turn is running, the only time the view follows the end. */
   following: boolean;
+  /** 1-based turn to bring into view, from a search hit. */
+  scrollToTurn?: number | null;
 };
 
-export const Transcript = ({ transcript, view, sessionKey, following }: TranscriptProps) => {
+export const Transcript = ({ transcript, view, sessionKey, following, scrollToTurn }: TranscriptProps) => {
   const scroller = useRef<HTMLDivElement>(null);
   const distance = useRef(0);
   const lastTurn = transcript.turns[transcript.turns.length - 1];
@@ -140,6 +142,12 @@ export const Transcript = ({ transcript, view, sessionKey, following }: Transcri
     el.scrollTop = 0;
     distance.current = el.scrollHeight - el.clientHeight;
   }, [sessionKey]);
+
+  const targetTurn = transcript.turns[(scrollToTurn ?? 0) - 1]?.id;
+  useEffect(() => {
+    if (!targetTurn) return;
+    document.getElementById(targetTurn)?.scrollIntoView({ block: 'start' });
+  }, [targetTurn, sessionKey]);
 
   // A prompt the reader just sent always brings the reply into view; streaming after that
   // follows only while they stay near the bottom.

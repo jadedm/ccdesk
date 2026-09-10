@@ -93,3 +93,49 @@ describe('IndexStore', () => {
     expect(store.snapshot().workspaces[0].folders[0].sessions).toEqual([{ sessionId: 'sess-1', cwd: '/tmp/w' }]);
   });
 });
+
+describe('IndexStore: organise', () => {
+  const seeded = async () => {
+    const { path, store } = await fresh();
+    const ws = await store.createWorkspace('W', '/tmp/w');
+    const a = await store.createFolder(ws.id, 'a');
+    const b = await store.createFolder(ws.id, 'b');
+    const other = await store.createWorkspace('O', '/tmp/o');
+    const c = await store.createFolder(other.id, 'c');
+    await store.fileSession(a.id, 's1', '/tmp/w');
+    await store.fileSession(a.id, 's2', '/tmp/w');
+    return { path, store, ws, a, b, other, c };
+  };
+
+  it('renames and deletes workspaces and folders, leaving the rest intact', async () => {
+    const { path, store, ws, a, other } = await seeded();
+    expect((await store.renameWorkspace(ws.id, ' Work ')).name).toBe('Work');
+    expect(await codeOf(store.renameWorkspace(ws.id, ''))).toBe('400 name_required');
+    expect(await codeOf(store.renameWorkspace('nope', 'x'))).toBe('404 workspace_not_found');
+    expect((await store.renameFolder(a.id, 'alpha')).name).toBe('alpha');
+    expect(await codeOf(store.renameFolder('nope', 'x'))).toBe('404 folder_not_found');
+    await store.deleteFolder(a.id);
+    expect(store.snapshot().workspaces[0].folders.map((f) => f.name)).toEqual(['b']);
+    expect(await codeOf(store.deleteFolder(a.id))).toBe('404 folder_not_found');
+    await store.deleteWorkspace(other.id);
+    expect(store.snapshot().workspaces.map((w) => w.name)).toEqual(['Work']);
+    expect(await codeOf(store.deleteWorkspace(other.id))).toBe('404 workspace_not_found');
+    const reloaded = new IndexStore(path);
+    await reloaded.load();
+    expect(reloaded.snapshot()).toEqual(store.snapshot());
+  });
+
+  it('moves a session within a workspace, refuses across workspaces, and unfiles', async () => {
+    const { store, a, b, c } = await seeded();
+    const moved = await store.moveSession(a.id, 's1', b.id);
+    expect(moved.sessions.map((s) => s.sessionId)).toEqual(['s1']);
+    expect(store.snapshot().workspaces[0].folders[0].sessions.map((s) => s.sessionId)).toEqual(['s2']);
+    expect(await codeOf(store.moveSession(a.id, 's2', c.id))).toBe('400 cross_workspace');
+    expect(await codeOf(store.moveSession(a.id, 'zzz', b.id))).toBe('404 session_not_filed');
+    expect(await codeOf(store.moveSession(a.id, 's2', 'nope'))).toBe('404 folder_not_found');
+    expect(await codeOf(store.moveSession(a.id, 's2', undefined))).toBe('400 folder_id_required');
+    await store.unfileSession(b.id, 's1');
+    expect(store.snapshot().workspaces[0].folders[1].sessions).toEqual([]);
+    expect(await codeOf(store.unfileSession(b.id, 's1'))).toBe('404 session_not_filed');
+  });
+});

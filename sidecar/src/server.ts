@@ -7,6 +7,8 @@ import { HttpError, badRequest, notFound } from './errors.ts';
 import { IndexStore } from './index-store.ts';
 import { SessionManager } from './sessions.ts';
 import { SessionMetaCache, sessionFile } from './session-meta.ts';
+import { MAX_RESULTS, matchSummary, searchFile, sortHits } from './search.ts';
+import type { SearchHit, SearchResponse } from '../../shared/protocol.ts';
 
 export type ServerConfig = { indexPath: string; sdkVersion: string; claudeBinary?: string; port?: number; token?: string };
 
@@ -85,6 +87,22 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
     route('POST', '/workspaces', async (_req, _p, body) => store.createWorkspace(body.name, body.cwd)),
     route('POST', '/workspaces/:wid/folders', async (_req, p, body) => store.createFolder(p.wid, body.name, body.cwd)),
     route('POST', '/folders/:fid/sessions', async (_req, p, body) => store.fileSession(p.fid, body.sessionId, body.cwd)),
+    route('PATCH', '/workspaces/:wid', async (_req, p, body) => store.renameWorkspace(p.wid, body.name)),
+    route('DELETE', '/workspaces/:wid', async (_req, p) => {
+      await store.deleteWorkspace(p.wid);
+      return { ok: true };
+    }),
+    route('PATCH', '/folders/:fid', async (_req, p, body) => store.renameFolder(p.fid, body.name)),
+    route('DELETE', '/folders/:fid', async (_req, p) => {
+      await store.deleteFolder(p.fid);
+      return { ok: true };
+    }),
+    route('PATCH', '/folders/:fid/sessions/:id', async (_req, p, body) => store.moveSession(p.fid, p.id, body.folderId)),
+    route('DELETE', '/folders/:fid/sessions/:id', async (_req, p) => {
+      await store.unfileSession(p.fid, p.id);
+      return { ok: true };
+    }),
+    route('GET', '/search', async (_req, _p, _b, url) => search((url.searchParams.get('q') ?? '').trim())),
     route('GET', '/sessions', async (_req, _p, _b, url) => {
       const cwd = requireCwd(url.searchParams.get('cwd'));
       const list = await listSessions({ dir: cwd });
@@ -106,6 +124,33 @@ export const startServer = async (config: ServerConfig): Promise<RunningServer> 
 
   // HTTP routes take the token as a bearer header only. The WebSocket upgrade is the one
   // place a browser cannot set a header, so that route alone accepts it as a query parameter.
+  // Every directory the index knows about, each scanned once even when shared by folders.
+  const search = async (q: string): Promise<SearchResponse> => {
+    if (q.length < 2) throw badRequest('query_too_short', 'at least two characters');
+    const dirs = new Map<string, string>();
+    for (const w of store.snapshot().workspaces) {
+      dirs.set(w.cwd, w.id);
+      for (const f of w.folders) if (f.cwd && !dirs.has(f.cwd)) dirs.set(f.cwd, w.id);
+    }
+    const hits: SearchHit[] = [];
+    let scanned = 0;
+    const seen = new Set<string>();
+    for (const [dir, workspaceId] of dirs) {
+      const list = await listSessions({ dir }).catch(() => []);
+      for (const s of list) {
+        if (seen.has(s.sessionId)) continue;
+        seen.add(s.sessionId);
+        scanned++;
+        const title = s.customTitle || s.summary || s.firstPrompt || s.sessionId.slice(0, 8);
+        const hit = matchSummary(s, q) ?? (await searchFile(sessionFile(s.cwd ?? dir, s.sessionId), q).catch(() => null));
+        if (!hit) continue;
+        hits.push({ sessionId: s.sessionId, cwd: s.cwd ?? dir, workspaceId, title, turn: hit.turn, snippet: hit.snippet, lastModified: s.lastModified });
+      }
+    }
+    const sorted = sortHits(hits);
+    return { results: sorted.slice(0, MAX_RESULTS), scanned, truncated: sorted.length > MAX_RESULTS };
+  };
+
   const authorized = (req: IncomingMessage): boolean => (req.headers.authorization ?? '') === `Bearer ${token}`;
   const upgradeAuthorized = (url: URL): boolean => url.searchParams.get('token') === token;
 

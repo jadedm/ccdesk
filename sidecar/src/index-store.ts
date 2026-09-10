@@ -80,6 +80,62 @@ export class IndexStore {
     return structuredClone(folder);
   }
 
+  async renameWorkspace(workspaceId: string, name: unknown): Promise<IndexWorkspace> {
+    const workspace = this.workspace(workspaceId);
+    workspace.name = cleanName(name);
+    await this.save();
+    return structuredClone(workspace);
+  }
+
+  /** Removes the workspace and its folders from the index only; session files are never touched. */
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    this.workspace(workspaceId);
+    this.index.workspaces = this.index.workspaces.filter((w) => w.id !== workspaceId);
+    await this.save();
+  }
+
+  async renameFolder(folderId: string, name: unknown): Promise<IndexFolder> {
+    const folder = this.folder(folderId);
+    folder.name = cleanName(name);
+    await this.save();
+    return structuredClone(folder);
+  }
+
+  /** Removes the folder; its sessions become unfiled again. */
+  async deleteFolder(folderId: string): Promise<void> {
+    const workspace = this.workspaceOfFolder(folderId);
+    workspace.folders = workspace.folders.filter((f) => f.id !== folderId);
+    await this.save();
+  }
+
+  /** Moves a filed session to another folder of the same workspace. */
+  async moveSession(folderId: string, sessionId: string, targetFolderId: unknown): Promise<IndexFolder> {
+    const from = this.folder(folderId);
+    const target = typeof targetFolderId === 'string' ? this.folder(targetFolderId) : null;
+    if (!target) throw badRequest('folder_id_required');
+    const entry = from.sessions.find((s) => s.sessionId === sessionId);
+    if (!entry) throw notFound('session_not_filed');
+    if (this.workspaceOfFolder(folderId) !== this.workspaceOfFolder(target.id)) throw badRequest('cross_workspace', 'move within one workspace');
+    from.sessions = from.sessions.filter((s) => s.sessionId !== sessionId);
+    if (target !== from) target.sessions.push(entry);
+    else from.sessions.push(entry);
+    await this.save();
+    return structuredClone(target);
+  }
+
+  async unfileSession(folderId: string, sessionId: string): Promise<void> {
+    const folder = this.folder(folderId);
+    if (!folder.sessions.some((s) => s.sessionId === sessionId)) throw notFound('session_not_filed');
+    folder.sessions = folder.sessions.filter((s) => s.sessionId !== sessionId);
+    await this.save();
+  }
+
+  private workspaceOfFolder(folderId: string): IndexWorkspace {
+    const found = this.index.workspaces.find((w) => w.folders.some((f) => f.id === folderId));
+    if (!found) throw notFound('folder_not_found');
+    return found;
+  }
+
   private isFiled(sessionId: string): boolean {
     return this.index.workspaces.some((w) => w.folders.some((f) => f.sessions.some((s) => s.sessionId === sessionId)));
   }

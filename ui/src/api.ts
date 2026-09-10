@@ -1,7 +1,7 @@
 // Sidecar discovery and transport. Runs inside Tauri (asks the shell for port and token)
 // or in a plain browser for smoke tests (reads ?port=&token= from the URL).
 
-import type { ClientMessage, ServerMessage, SessionSummary, SidecarInfo, WorkspaceIndex } from '../../shared/protocol.ts';
+import type { ClientMessage, SearchResponse, ServerMessage, SessionSummary, SidecarInfo, WorkspaceIndex } from '../../shared/protocol.ts';
 
 type TauriWindow = Window & { __TAURI_INTERNALS__?: unknown };
 
@@ -59,6 +59,14 @@ export class Api {
   messages = (sessionId: string, cwd: string) =>
     this.call<unknown[]>('GET', `/sessions/${sessionId}/messages?cwd=${encodeURIComponent(cwd)}`);
   rename = (sessionId: string, cwd: string, title: string) => this.call<unknown>('PATCH', `/sessions/${sessionId}`, { cwd, title });
+  renameWorkspace = (id: string, name: string) => this.call<unknown>('PATCH', `/workspaces/${id}`, { name });
+  deleteWorkspace = (id: string) => this.call<unknown>('DELETE', `/workspaces/${id}`);
+  renameFolder = (id: string, name: string) => this.call<unknown>('PATCH', `/folders/${id}`, { name });
+  deleteFolder = (id: string) => this.call<unknown>('DELETE', `/folders/${id}`);
+  moveSession = (folderId: string, sessionId: string, targetFolderId: string) =>
+    this.call<unknown>('PATCH', `/folders/${folderId}/sessions/${sessionId}`, { folderId: targetFolderId });
+  unfileSession = (folderId: string, sessionId: string) => this.call<unknown>('DELETE', `/folders/${folderId}/sessions/${sessionId}`);
+  search = (q: string) => this.call<SearchResponse>('GET', `/search?q=${encodeURIComponent(q)}`);
 
   socketUrl(): string {
     return `ws://127.0.0.1:${this.info.port}/ws?token=${this.info.token}`;

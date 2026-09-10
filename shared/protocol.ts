@@ -49,3 +49,16 @@ export type SessionSummary = {
 };
 
 export type SidecarInfo = { port: number; token: string };
+
+export type SearchHit = {
+  sessionId: string;
+  cwd: string;
+  workspaceId: string;
+  title: string;
+  /** 1-based user turn the first hit is in; 1 when the hit is in the title or first prompt. */
+  turn: number;
+  snippet: string;
+  lastModified: number;
+};
+
+export type SearchResponse = { results: SearchHit[]; scanned: number; truncated: boolean };

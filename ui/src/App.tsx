@@ -5,7 +5,8 @@ import { Composer } from './components/Composer.tsx';
 import { Transcript } from './components/Transcript.tsx';
 import type { View } from './transcript/view.ts';
 import { Tabs } from './components/Tabs.tsx';
-import { Tree } from './components/Tree.tsx';
+import { Search } from './components/Search.tsx';
+import { Tree, type Organise } from './components/Tree.tsx';
 import { closeDecision, cycle } from './tabs.ts';
 import { insideTauri } from './api.ts';
 import { folderCwd, mergeListings, workspaceDirs, type ListedSession } from './cwd.ts';
@@ -42,12 +43,18 @@ export default function App() {
   const view: View = { hideThinking: prefs.hideThinking, showTools: prefs.showTools, showSystem: prefs.showSystem, bionic: prefs.bionic };
   const [renaming, setRenaming] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
+  /** A search hit asks the transcript to bring one turn into view. */
+  const [scrollToTurn, setScrollToTurn] = useState<number | null>(null);
+  const indexRef = useRef<WorkspaceIndex | null>(null);
   const socket = useRef<Socket | null>(null);
   const pendingFile = useRef<Record<string, { folderId: string; cwd: string }>>({});
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+  useEffect(() => {
+    indexRef.current = index;
+  }, [index]);
 
   const refreshIndex = useCallback(async () => {
     if (!api) return;
@@ -121,12 +128,13 @@ export default function App() {
   };
 
   // Where a session's store lives: the filed cwd, the directory it was listed from, or the folder's.
-  const onOpenSession = async (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string, listedIn?: string) => {
+  const onOpenSession = useCallback(async (ws: IndexWorkspace, folder: IndexFolder | null, sessionId: string, title: string, listedIn?: string, turn?: number) => {
     if (!api) return;
     const cwd = folder?.sessions.find((s) => s.sessionId === sessionId)?.cwd ?? listedIn ?? folderCwd(ws, folder);
     const existing = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
     if (existing) {
       dispatch({ type: 'activate', key: existing.key });
+      setScrollToTurn(turn ?? null);
       return;
     }
     const records = await api.messages(sessionId, cwd).catch((e: unknown) => {
@@ -134,7 +142,8 @@ export default function App() {
       return [] as unknown[];
     });
     dispatch({ type: 'open_history', key: `hist-${sessionId}`, sessionId, cwd, folderId: folder?.id ?? null, title, records });
-  };
+    setScrollToTurn(turn ?? null);
+  }, [api]);
 
   // Any live session (idle ones still hold a query on the sidecar) is stopped on close; a
   // running one asks first. It can be resumed by id from the tree. Saved ones leave memory.
@@ -185,6 +194,35 @@ export default function App() {
     };
   }, [closeTab]);
 
+  // Every organise action is fire and forget: apply on the sidecar, then refresh the index.
+  const organise: Organise = useMemo(() => {
+    const after = (p: Promise<unknown>) => void p.then(refreshIndex).catch((e: unknown) => setAppError(String(e)));
+    return {
+      renameWorkspace: (id, name) => api && after(api.renameWorkspace(id, name)),
+      deleteWorkspace: (id) => api && after(api.deleteWorkspace(id)),
+      renameFolder: (id, name) => api && after(api.renameFolder(id, name)),
+      deleteFolder: (id) => api && after(api.deleteFolder(id)),
+      renameSession: (sessionId, cwd, title) => {
+        if (!api) return;
+        after(api.rename(sessionId, cwd, title));
+        const open = Object.values(stateRef.current.sessions).find((s) => s.sessionId === sessionId);
+        if (open) dispatch({ type: 'rename', key: open.key, title });
+      },
+      moveSession: (folderId, sessionId, target) => api && after(api.moveSession(folderId, sessionId, target)),
+      unfileSession: (folderId, sessionId) => api && after(api.unfileSession(folderId, sessionId)),
+      fileSession: (folderId, sessionId, cwd) => api && after(api.fileSession(folderId, sessionId, cwd)),
+    };
+  }, [api, refreshIndex]);
+
+  // Opening a hit reads the index from the ref, so the callback stays stable for Search.
+  const openHit = useCallback((hit: { sessionId: string; cwd: string; title: string; turn: number }) => {
+    const current = indexRef.current;
+    const workspace = current?.workspaces.find((w) => w.cwd === hit.cwd || w.folders.some((f) => f.cwd === hit.cwd));
+    if (!workspace) return;
+    const folder = workspace.folders.find((f) => f.sessions.some((s) => s.sessionId === hit.sessionId)) ?? null;
+    void onOpenSession(workspace, folder, hit.sessionId, hit.title, hit.cwd, hit.turn);
+  }, [onOpenSession]);
+
   const onRename = async (title: string) => {
     setRenaming(false);
     if (!api || !active?.sessionId || title.trim() === '' || title === active.title) return;
@@ -232,6 +270,8 @@ export default function App() {
       {!prefs.railCollapsed && (
       <Tree
         onCollapse={() => setPrefs({ railCollapsed: true })}
+        organise={organise}
+        search={api ? <Search index={index} run={api.search} onOpen={openHit} /> : null}
         index={index}
         unfiled={unfiled}
         sessions={state.sessions}
@@ -281,7 +321,7 @@ export default function App() {
           )}
         </div>
         {active ? (
-          <Transcript transcript={active.transcript} view={view} sessionKey={active.key} following={active.status === 'running' || active.status === 'starting'} />
+          <Transcript transcript={active.transcript} view={view} sessionKey={active.key} following={active.status === 'running' || active.status === 'starting'} scrollToTurn={scrollToTurn} />
         ) : (
           <div className="transcript"><div className="empty">Pick a session on the left, or add a workspace.</div></div>
         )}
