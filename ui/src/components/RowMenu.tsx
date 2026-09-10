@@ -36,7 +36,10 @@ export const RowMenu = forwardRef<RowMenuHandle, { actions: MenuAction[]; label:
     if (!isOpen) return;
     list.current?.querySelector('button')?.focus();
     const away = (e: MouseEvent) => {
-      if (!list.current?.contains(e.target as Node) && !trigger.current?.contains(e.target as Node)) close(false);
+      // A synthetic event can carry a non-Node target; contains() throws on one.
+      const target = e.target instanceof Node ? e.target : null;
+      if (target && (list.current?.contains(target) || trigger.current?.contains(target))) return;
+      close(false);
     };
     const key = (e: KeyboardEvent) => e.key === 'Escape' && close(true);
     // Scrolling follows the row rather than dismissing: focusing the trigger can itself
